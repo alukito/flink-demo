@@ -89,16 +89,123 @@ The Go server is both a Kafka producer (forwarding role actions) and a Kafka con
 ## Order Lifecycle
 
 ```
-Buyer checkout → [cart.checkout]
-                      ↓
-             Seller sees new order
-             Seller confirms order → [order.confirmed]
-                                          ↓
-                                 Shipper sees pickup job
-                                 Shipper picks job → [shipment.picked]
-                                 Shipper delivers → [shipment.delivered]
-                                                         ↓
-                                                 Buyer gets notified
+Buyer checkout → [cart.checkout, one event per per-seller order]
+                       ↓
+              Seller sees new order (filtered to their products)
+              Seller confirms order → [order.confirmed]
+                                           ↓
+                                  Shipper sees pickup job (all unpicked jobs visible to all shippers)
+                                  Shipper picks job → [shipment.picked]
+                                  Shipper delivers → [shipment.delivered]
+                                                          ↓
+                                                  Buyer gets notified (filtered to their orders)
+```
+
+## Data Structures & Filtering
+
+### Multi-Seller Cart Splitting
+
+A buyer's cart can contain products from multiple sellers. At checkout, the Go server splits the cart by `SellerID` and produces **one `cart.checkout` event per seller**. The buyer receives N order IDs (one per seller) and sees N order cards in their UI, each tracking its own lifecycle independently.
+
+### Data Model
+
+```go
+type Product struct {
+    ID, Name            string
+    Price               int  // cents
+    Quantity            int
+    SellerID            string  // ownership
+    ListedAt            time.Time
+}
+
+type Order struct {
+    ID                  string
+    BuyerID             string  // who placed it
+    SellerID            string  // which seller owns this sub-order
+    Items               []OrderItem
+    TotalAmount         int
+    ShippingAddress     string
+    Status              OrderStatus  // checkout → confirmed → picked → delivered
+    PickedBy            string  // shipper name (set on pick)
+    CreatedAt, ConfirmedAt, PickedAt, DeliveredAt  time.Time
+}
+```
+
+### In-Memory Collections & Indexes
+
+Go server maintains one primary store plus derived indexes, all guarded by a single `sync.RWMutex`:
+
+```go
+type Store struct {
+    mu        sync.RWMutex
+
+    // Primary stores (source of truth)
+    products  map[string]*Product     // productID → product
+    orders    map[string]*Order       // orderID → order
+    sessions  map[string]*Session     // sessionID → session
+
+    // Derived indexes (kept in sync on every mutation, same locked region)
+    productsBySeller map[string][]string          // sellerID → []productID
+    ordersByBuyer    map[string][]string          // buyerID → []orderID
+    ordersBySeller   map[string][]string          // sellerID → []orderID
+    ordersByStatus   map[OrderStatus][]string     // status → []orderID (e.g., "confirmed" → shipper job board)
+}
+```
+
+The two primary maps hold source of truth; lookup by ID is O(1). The derived indexes support role-specific queries without scanning the primary maps. **Update rule:** every mutation (add product, create order, confirm, pick, deliver) updates the primary map AND all affected indexes in the same locked region. Reads from indexes are lock-free reads of the slice reference.
+
+The extra memory (multiple slices pointing to the same IDs) is trivial for a 10–15 person demo. The upside is clean separation between primary state and lookup, predictable read performance, and code that's easy to reason about.
+
+### Filtering Rules
+
+| Role | REST query | WebSocket push |
+|------|------------|----------------|
+| **Buyer** | `ordersByBuyer[buyerID]` for own orders | `product.listed` (all); `cart.checkout`, `order.confirmed`, `shipment.picked`, `shipment.delivered` filtered to `BuyerID == self` |
+| **Seller** | `productsBySeller[sellerID]` for own products; `ordersBySeller[sellerID]` filtered by status for incoming orders | `cart.checkout` filtered to `SellerID == self`; `order.confirmed` echoes for own orders |
+| **Shipper** | `ordersByStatus[confirmed]` for the job board | `order.confirmed` for ALL unpicked orders (any shipper can claim) |
+| **Dashboard** | — | Everything — raw events + Flink outputs |
+
+**Key distinction:** REST queries use indexes for O(1) lookup. WebSocket subscription filtering is push-based and does **per-client predicate checks** on each event (e.g., "does this event's `buyer_id` match this client's name?"). No indexes are needed for push — just a predicate per client per event.
+
+### Race Conditions
+
+| Race | Solution |
+|------|----------|
+| **Two shippers pick the same job** | Go mutex on order; check `status == confirmed` under lock, set to `picked` + assign `PickedBy`, then produce `shipment.picked` event. Second caller gets 409 Conflict. |
+| **Seller double-clicks confirm** | Same mutex pattern; `status == checkout` check, idempotent. |
+| **Buyer cart concurrent mods** | Single browser, single buyer — not an issue. |
+
+**Critical design point:** the Go server's in-memory state is the **source of truth** for order lifecycle. Kafka events are *notifications* of state changes, not the state itself. The mutex protects state synchronously; the Kafka event is produced *after* the state change succeeds. This keeps ordering correct: no consumer ever sees an event for a state that hasn't already been committed in Go.
+
+### Event Payloads (with relationship fields)
+
+Events carry the relationship fields needed for filtering:
+
+```json
+// product.listed
+{ "actor_id": "seller-name", "payload": {
+    "product_id": "uuid", "name": "Widget", "price": 500, "quantity": 10 }}
+
+// cart.item.added
+{ "actor_id": "buyer-name", "payload": {
+    "product_id": "uuid", "seller_id": "seller-name", "quantity": 1 }}
+
+// cart.checkout (one event per per-seller order)
+{ "actor_id": "buyer-name", "payload": {
+    "order_id": "uuid", "seller_id": "seller-name",
+    "items": [...], "total_amount": 1500, "shipping_address": "..." }}
+
+// order.confirmed
+{ "actor_id": "seller-name", "payload": {
+    "order_id": "uuid", "buyer_id": "buyer-name" }}
+
+// shipment.picked
+{ "actor_id": "shipper-name", "payload": {
+    "order_id": "uuid", "buyer_id": "buyer-name", "seller_id": "seller-name" }}
+
+// shipment.delivered
+{ "actor_id": "shipper-name", "payload": {
+    "order_id": "uuid", "buyer_id": "buyer-name" }}
 ```
 
 ## Role UIs & User Flows
@@ -111,16 +218,16 @@ Buyer checkout → [cart.checkout]
 
 ### Seller UI
 - **Product panel:** Form to add a product (name, price, quantity). On submit → `POST /api/seller/products` → Go produces `product.listed`.
-- **Order inbox:** Live list of incoming checkouts (fed via WebSocket from `cart.checkout`). Each order has a "Confirm Order" button → `POST /api/seller/orders/:id/confirm` → Go produces `order.confirmed`.
+- **Order inbox:** Live list of incoming checkouts filtered to this seller's products (fed via WebSocket from `cart.checkout` where `seller_id == self`). Each order has a "Confirm Order" button → `POST /api/seller/orders/:id/confirm` → Go produces `order.confirmed`.
 
 ### Buyer UI
 - **Product catalog:** Live-updating grid of available products (fed via WebSocket from `product.listed`).
-- **Cart:** Add items, view cart total.
-- **Checkout:** Enter shipping address → `POST /api/buyer/cart/checkout` → Go produces `cart.checkout`.
-- **Order status:** Shows current order state (Confirmed / Picked / Delivered), updated live via WebSocket.
+- **Cart:** Add items from any sellers, view cart total. Cart can mix products from multiple sellers.
+- **Checkout:** Enter shipping address → `POST /api/buyer/cart/checkout` → Go splits cart by seller and produces one `cart.checkout` event per seller. Buyer receives N order IDs (one per seller in the cart).
+- **Order status:** Shows N order cards (one per seller), each tracking its own state (Confirmed / Picked / Delivered), updated live via WebSocket. Each card shows the seller name, items from that seller, and current status.
 
 ### Shipper UI
-- **Job board:** Live list of confirmed orders ready for pickup (fed via WebSocket from `order.confirmed`). Each job shows buyer name, address, items.
+- **Job board:** Live list of confirmed orders ready for pickup (fed via WebSocket from `order.confirmed`). Each job shows buyer name, address, items. All shippers see all unpicked jobs; once a job is picked, it disappears from the board for all other shippers (enforced server-side via mutex; second picker gets 409 Conflict).
 - **Accept job** → `POST /api/shipper/jobs/:id/pick` → Go produces `shipment.picked`. After picking, a random **5–15 second countdown timer** runs in the browser. The "Mark Delivered" button is disabled and shows the countdown. This simulates transit time and prevents the shipper from clicking delivered too quickly.
 - **Mark delivered** → `POST /api/shipper/jobs/:id/deliver` → Go produces `shipment.delivered`.
 
