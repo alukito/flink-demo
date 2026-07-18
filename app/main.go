@@ -13,6 +13,7 @@ import (
 
 func main() {
 	logger := logging.NewLogger()
+	slog.SetDefault(logger)
 	cfg := config.Load()
 
 	logger.Info("starting server",
