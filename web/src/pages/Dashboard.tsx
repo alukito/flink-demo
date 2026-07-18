@@ -33,36 +33,24 @@ function EventRow({ event }: { event: EventEnvelope }) {
 
 export default function Dashboard() {
   const { events, addEvent, clearEvents } = useEvents();
-  const [wsEvent, setWsEvent] = useState<(event: EventEnvelope) => void>(() => () => {});
-  const { connected } = useWebSocket(wsEvent);
-  const [connecting, setConnecting] = useState(true);
+  const [dashToken, setDashToken] = useState<string | null>(() => localStorage.getItem('dash_token'));
+  const { connected } = useWebSocket(addEvent, dashToken);
 
+  // Auto-create a dashboard session for the WebSocket connection.
+  // Uses a SEPARATE localStorage key (dash_token) so it does NOT
+  // pollute the shared SessionContext (token/name/role) that the
+  // role pages rely on.
   useEffect(() => {
-    let existingToken = localStorage.getItem('dash_token');
-    if (existingToken) {
-      localStorage.setItem('token', existingToken);
-      localStorage.setItem('name', localStorage.getItem('dash_name') || 'dashboard');
-      localStorage.setItem('role', 'dashboard');
-      setWsEvent(addEvent);
-      setConnecting(false);
-      return;
-    }
+    if (dashToken) return;
 
     const name = `dashboard-${Math.random().toString(36).slice(2, 8)}`;
     createSession(name, 'dashboard')
       .then((resp) => {
         localStorage.setItem('dash_token', resp.token);
-        localStorage.setItem('dash_name', resp.name);
-        localStorage.setItem('token', resp.token);
-        localStorage.setItem('name', resp.name);
-        localStorage.setItem('role', 'dashboard');
-        setWsEvent(() => addEvent);
-        setConnecting(false);
+        setDashToken(resp.token);
       })
-      .catch(() => setConnecting(false));
-  }, [addEvent]);
-
-  useEffect(() => { setWsEvent(() => addEvent); }, [addEvent]);
+      .catch((err) => console.error('[dashboard] failed to create session', err));
+  }, [dashToken]);
 
   return (
     <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
@@ -74,7 +62,7 @@ export default function Dashboard() {
             background: connected ? '#d1fae5' : '#fee2e2',
             color: connected ? '#059669' : '#dc2626',
           }}>
-            {connected ? 'Connected' : connecting ? 'Connecting...' : 'Disconnected'}
+            {connected ? 'Connected' : dashToken ? 'Reconnecting...' : 'Connecting...'}
           </span>
           <button onClick={clearEvents} style={{ padding: '6px 16px', fontSize: '12px' }}>
             Clear

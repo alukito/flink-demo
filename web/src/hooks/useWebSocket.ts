@@ -2,8 +2,17 @@ import { useEffect, useRef, useCallback, useState } from 'react';
 import { useSession } from '../context/SessionContext';
 import type { EventEnvelope } from '../context/EventContext';
 
-export function useWebSocket(onEvent: (event: EventEnvelope) => void) {
-  const { token } = useSession();
+/**
+ * useWebSocket connects to the server's WebSocket endpoint and calls
+ * onEvent for every incoming event. Auto-reconnects with 1s backoff.
+ *
+ * If `overrideToken` is provided, it is used instead of the session
+ * token. This lets the Dashboard connect with its own auto-created
+ * dashboard token without polluting the shared SessionContext.
+ */
+export function useWebSocket(onEvent: (event: EventEnvelope) => void, overrideToken?: string | null) {
+  const { token: sessionToken } = useSession();
+  const token = overrideToken ?? sessionToken;
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
   const [connected, setConnected] = useState(false);
