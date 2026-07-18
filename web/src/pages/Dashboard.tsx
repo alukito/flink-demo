@@ -1,5 +1,7 @@
+import { useEffect, useState } from 'react';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { useEvents, type EventEnvelope } from '../context/EventContext';
+import { createSession } from '../api/client';
 
 function eventColor(eventType: string): string {
   if (eventType.startsWith('product')) return '#2563eb';
@@ -31,7 +33,36 @@ function EventRow({ event }: { event: EventEnvelope }) {
 
 export default function Dashboard() {
   const { events, addEvent } = useEvents();
-  const { connected } = useWebSocket(addEvent);
+  const [wsEvent, setWsEvent] = useState<(event: EventEnvelope) => void>(() => () => {});
+  const { connected } = useWebSocket(wsEvent);
+  const [connecting, setConnecting] = useState(true);
+
+  useEffect(() => {
+    let existingToken = localStorage.getItem('dash_token');
+    if (existingToken) {
+      localStorage.setItem('token', existingToken);
+      localStorage.setItem('name', localStorage.getItem('dash_name') || 'dashboard');
+      localStorage.setItem('role', 'dashboard');
+      setWsEvent(addEvent);
+      setConnecting(false);
+      return;
+    }
+
+    const name = `dashboard-${Math.random().toString(36).slice(2, 8)}`;
+    createSession(name, 'dashboard')
+      .then((resp) => {
+        localStorage.setItem('dash_token', resp.token);
+        localStorage.setItem('dash_name', resp.name);
+        localStorage.setItem('token', resp.token);
+        localStorage.setItem('name', resp.name);
+        localStorage.setItem('role', 'dashboard');
+        setWsEvent(() => addEvent);
+        setConnecting(false);
+      })
+      .catch(() => setConnecting(false));
+  }, [addEvent]);
+
+  useEffect(() => { setWsEvent(() => addEvent); }, [addEvent]);
 
   return (
     <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
@@ -43,7 +74,7 @@ export default function Dashboard() {
             background: connected ? '#d1fae5' : '#fee2e2',
             color: connected ? '#059669' : '#dc2626',
           }}>
-            {connected ? 'Connected' : 'Disconnected'}
+            {connected ? 'Connected' : connecting ? 'Connecting...' : 'Disconnected'}
           </span>
           <button onClick={() => window.location.reload()} style={{ padding: '6px 16px', fontSize: '12px' }}>
             Refresh
