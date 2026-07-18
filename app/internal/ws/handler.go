@@ -1,6 +1,7 @@
 package ws
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 
@@ -40,6 +41,11 @@ func (h *WSHandler) ServeWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Use a background context for the WebSocket lifecycle — the request
+	// context is cancelled when the HTTP handler returns, which would
+	// immediately kill the WebSocket.
+	ctx, cancel := context.WithCancel(context.Background())
+
 	client := &Client{
 		Name: claims.Name,
 		Role: claims.Role,
@@ -53,10 +59,11 @@ func (h *WSHandler) ServeWS(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		defer func() {
 			h.hub.Unregister <- client
+			cancel()
 			conn.Close(websocket.StatusNormalClosure, "")
 		}()
 		for {
-			_, _, err := conn.Read(r.Context())
+			_, _, err := conn.Read(ctx)
 			if err != nil {
 				return
 			}
@@ -66,8 +73,9 @@ func (h *WSHandler) ServeWS(w http.ResponseWriter, r *http.Request) {
 	// Write loop
 	go func() {
 		for data := range client.send {
-			err := conn.Write(r.Context(), websocket.MessageText, data)
+			err := conn.Write(ctx, websocket.MessageText, data)
 			if err != nil {
+				cancel()
 				return
 			}
 			slog.Debug("websocket event pushed", "client", client.Name, "data_len", len(data))
