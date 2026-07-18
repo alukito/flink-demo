@@ -142,9 +142,15 @@ func (s *Server) spaHandler(fileServer http.Handler, distFS fs.FS) http.Handler 
 	})
 }
 
-// loggingMiddleware logs each HTTP request.
+// loggingMiddleware logs each HTTP request. WebSocket upgrade requests
+// (/ws) bypass the statusRecorder wrapper because coder/websocket needs
+// the raw http.ResponseWriter to implement http.Hijacker.
 func (s *Server) loggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/ws" {
+			next.ServeHTTP(w, r)
+			return
+		}
 		start := time.Now()
 		wrapped := &statusRecorder{ResponseWriter: w, status: 200}
 		next.ServeHTTP(wrapped, r)
