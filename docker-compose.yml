@@ -42,4 +42,4 @@ services:
       JWT_SECRET: demo-secret-not-for-production
       PORT: "8080"
     ports:
-      - "8080:8080"
+      - "15300:8080"
