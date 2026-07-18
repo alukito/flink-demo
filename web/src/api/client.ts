@@ -35,3 +35,50 @@ export async function apiPost(path: string, token: string, body?: unknown): Prom
     body: body ? JSON.stringify(body) : undefined,
   });
 }
+
+// Seller API
+export async function addProduct(token: string, name: string, price: number, quantity: number): Promise<Response> {
+  return apiPost('/seller/products', token, { name, price, quantity });
+}
+
+export async function listSellerProducts(token: string): Promise<Response> {
+  return apiGet('/seller/products', token);
+}
+
+export async function listSellerOrders(token: string): Promise<Response> {
+  return apiGet('/seller/orders', token);
+}
+
+export async function confirmOrder(token: string, orderId: string): Promise<Response> {
+  return apiPost(`/seller/orders/${orderId}/confirm`, token);
+}
+
+// Buyer API
+export async function listBuyerProducts(token: string): Promise<Response> {
+  return apiGet('/buyer/products', token);
+}
+
+export async function addToCart(token: string, productId: string, quantity: number): Promise<Response> {
+  return apiPost('/buyer/cart/items', token, { product_id: productId, quantity });
+}
+
+export async function checkout(token: string, items: { product_id: string; quantity: number }[], shippingAddress: string): Promise<Response> {
+  return apiPost('/buyer/cart/checkout', token, { items, shipping_address: shippingAddress });
+}
+
+export async function listBuyerOrders(token: string): Promise<Response> {
+  return apiGet('/buyer/orders', token);
+}
+
+// Shipper API
+export async function listShipperJobs(token: string): Promise<Response> {
+  return apiGet('/shipper/jobs', token);
+}
+
+export async function pickJob(token: string, orderId: string): Promise<Response> {
+  return apiPost(`/shipper/jobs/${orderId}/pick`, token);
+}
+
+export async function deliverJob(token: string, orderId: string): Promise<Response> {
+  return apiPost(`/shipper/jobs/${orderId}/deliver`, token);
+}
