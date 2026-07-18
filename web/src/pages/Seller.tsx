@@ -171,7 +171,7 @@ export default function Seller() {
                 marginBottom: '12px', background: '#f9fafb',
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ fontWeight: 'bold' }}>Sale to {o.buyer_id}</span>
+                  <span style={{ fontWeight: 'bold' }}>Order from {o.buyer_id}</span>
                   <span style={{
                     padding: '2px 8px', borderRadius: '4px', fontSize: '12px',
                     background: o.status === 'checkout' ? '#fef3c7' : '#d1fae5',
