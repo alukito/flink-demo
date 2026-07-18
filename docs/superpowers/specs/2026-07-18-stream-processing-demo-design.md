@@ -234,11 +234,11 @@ Events carry the relationship fields needed for filtering:
 ### Dashboard (speaker-projected)
 Three panels side by side, each illustrating a level:
 - **Level 1 — Live event feed:** scrolling list of raw events as they happen
-- **Level 2 — Aggregations:** For each metric, three display elements:
-  - Stat card: latest 5-minute value (latest window result)
-  - Stat card: total of the day (cumulative)
-  - Bar chart: sliding window history (last N windows, shows evolution)
-- **Level 3 — CEP alerts:** feed of pattern matches, each rendered by pattern type (abandoned cart in amber, order surge in red, etc.)
+- **Level 2 — Aggregations:** Subscribes to `flink.window.stats` and splits events by `metric` field. For each metric:
+  - Stat card: latest window value (`scope: "window"`)
+  - Stat card: total of the day (`scope: "daily"`)
+  - Bar chart: sliding window history (last N `scope: "window"` events, shows evolution)
+- **Level 3 — CEP alerts:** Subscribes to `flink.cep.alerts`, renders each alert by `pattern` field with `detail` formatted per pattern type (abandoned cart in amber, order surge in red, etc.)
 
 ## Authentication
 
@@ -280,48 +280,75 @@ Each namespace has a single `requireRole(role)` middleware applied to all its ro
 
 ### Job 1 — Sliding Window Aggregations (Level 2)
 
-**Reads:** `product.listed`, `cart.item.added`, `cart.checkout`, `order.confirmed`, `shipment.delivered`
+**Structure:** One Flink job per metric. Each job has a single source topic and a single aggregation, making it simple to explain and reason about. All jobs write to the same `flink.window.stats` topic with a generalized envelope; the dashboard consumer splits by the `metric` field.
 
 **Window:** 5-minute sliding window, emits every 5 seconds. The 5-second emit frequency makes the dashboard animate quickly during the demo while still accurately demonstrating the 5-minute sliding window concept.
 
-**Metrics computed per window (event funnel):**
+**Metric jobs (window scope):**
 
-| Metric | Source topic | What it shows |
+| Job (metric) | Source topic | What it shows |
 |--------|-------------|---------------|
 | `listings_count` | `product.listed` | Products listed by sellers |
 | `cart_adds_count` | `cart.item.added` | Items added to carts |
 | `tx_count` | `cart.checkout` | Checkouts (headline metric) |
 | `confirmed_orders` | `order.confirmed` | Orders seller confirmed |
 | `delivered_orders` | `shipment.delivered` | Orders shipper delivered |
-| `top_product` | `cart.item.added` | Product with most cart adds (name + count) |
+| `top_product` | `cart.item.added` | Product with most cart adds in the window |
+
+**Daily cumulative jobs** (keyed by calendar day, for the "total of day" stat cards):
+
+| Job (metric) | Source topic | What it shows |
+|--------|-------------|---------------|
+| `tx_count` (daily scope) | `cart.checkout` | Total checkouts today |
+| `revenue` (daily scope) | `cart.checkout` | Total revenue today (a satisfying number to watch climb) |
+| `delivered_orders` (daily scope) | `shipment.delivered` | Total deliveries today |
+
+Metrics that have both a windowed value and a daily cumulative (e.g., `tx_count`, `delivered_orders`) are emitted by the same job with a `scope` field distinguishing the two. The dashboard renders the window value as a bar chart entry and the daily value as a stat card.
 
 This turns the Level 2 dashboard into a stacked/grouped bar chart per window — the audience literally sees the funnel of events flowing through the system.
 
-**Daily accumulators** (keyed by calendar day) for the "total of day" stat cards:
-- `daily_tx_count` — total checkouts today
-- `daily_revenue` — total revenue today (a satisfying number to watch climb)
-- `daily_delivered` — total deliveries today
-
 **Writes to:** `flink.window.stats`
+
+**Generalized envelope:**
 
 ```json
 {
+  "metric": "tx_count",
+  "scope": "window",
   "window_end": "2026-07-18T10:05:00Z",
-  "listings_count": 3,
-  "cart_adds_count": 9,
-  "tx_count": 7,
-  "confirmed_orders": 5,
-  "delivered_orders": 4,
-  "top_product": { "product_id": "uuid", "name": "Widget", "count": 4 },
-  "daily_tx_count": 23,
-  "daily_revenue": 489000,
-  "daily_delivered": 18
+  "value": 7,
+  "detail": {}
 }
+```
+
+- `metric` — identifies which metric this is
+- `scope` — `"window"` (5-minute sliding) or `"daily"` (cumulative for the day)
+- `window_end` — window boundary timestamp (day boundary for daily scope)
+- `value` — the primary numeric value
+- `detail` — metric-specific extras (empty for simple counts)
+
+**Examples by metric:**
+
+```json
+// Simple count metric (window)
+{ "metric": "tx_count", "scope": "window", "window_end": "...", "value": 7, "detail": {} }
+
+// Same metric, daily cumulative
+{ "metric": "tx_count", "scope": "daily", "window_end": "...", "value": 23, "detail": {} }
+
+// Daily revenue (daily scope only)
+{ "metric": "revenue", "scope": "daily", "window_end": "...", "value": 489000, "detail": {} }
+
+// Top product — value is the count, product info in detail
+{ "metric": "top_product", "scope": "window", "window_end": "...", "value": 4,
+  "detail": { "product_id": "uuid", "name": "Widget" } }
 ```
 
 ### Job 2 — CEP Patterns (Level 3)
 
-**Reads:** `cart.item.added`, `cart.checkout`, `order.confirmed`, `shipment.picked`, `shipment.delivered`
+**Structure:** One Flink CEP job per pattern. Each job reads the topics it needs and detects one specific pattern. All jobs write to the same `flink.cep.alerts` topic with a generalized envelope; pattern-specific fields live inside `detail`.
+
+**Reads (union across all pattern jobs):** `cart.item.added`, `cart.checkout`, `order.confirmed`, `shipment.picked`, `shipment.delivered`
 
 **Patterns:**
 
@@ -333,49 +360,42 @@ This turns the Level 2 dashboard into a stacked/grouped bar chart per window —
 | Order surge | 3+ `cart.checkout` events from distinct buyers | 30s | Speaker signals audience to all check out at once |
 | Checkout-to-delivery time | `cart.checkout` → `shipment.delivered` per order | — (measures elapsed time) | Completes naturally |
 
-All five patterns emit to `flink.cep.alerts` with a `pattern` field so the dashboard can render each differently.
-
 **Writes to:** `flink.cep.alerts`
 
+**Generalized envelope:**
+
 ```json
 {
-  "pattern": "abandoned_cart",
-  "actor_id": "buyer-display-name",
+  "pattern": "<pattern_name>",
   "detected_at": "2026-07-18T10:07:00Z",
-  "detail": {}
+  "detail": { ... pattern-specific fields ... }
 }
 ```
+
+All pattern-specific data lives inside `detail`, so the envelope is uniform across all patterns. The dashboard renders the `pattern` field as the alert type, `detected_at` as the timestamp, and formats the `detail` object per pattern.
+
+**Examples by pattern:**
+
 ```json
-{
-  "pattern": "trending_product",
-  "product_id": "uuid",
-  "product_name": "Widget",
-  "distinct_buyers": 4,
-  "detected_at": "2026-07-18T10:08:00Z"
-}
-```
-```json
-{
-  "pattern": "slow_shipper",
-  "order_id": "uuid",
-  "shipper_id": "shipper-display-name",
-  "detected_at": "2026-07-18T10:09:00Z"
-}
-```
-```json
-{
-  "pattern": "order_surge",
-  "checkout_count": 4,
-  "detected_at": "2026-07-18T10:10:00Z"
-}
-```
-```json
-{
-  "pattern": "delivery_completed",
-  "order_id": "uuid",
-  "checkout_to_delivery_seconds": 47,
-  "detected_at": "2026-07-18T10:11:00Z"
-}
+// Abandoned cart
+{ "pattern": "abandoned_cart", "detected_at": "...",
+  "detail": { "actor_id": "buyer-display-name" } }
+
+// Trending product
+{ "pattern": "trending_product", "detected_at": "...",
+  "detail": { "product_id": "uuid", "product_name": "Widget", "distinct_buyers": 4 } }
+
+// Slow shipper
+{ "pattern": "slow_shipper", "detected_at": "...",
+  "detail": { "order_id": "uuid", "shipper_id": "shipper-display-name" } }
+
+// Order surge
+{ "pattern": "order_surge", "detected_at": "...",
+  "detail": { "checkout_count": 4 } }
+
+// Checkout-to-delivery time
+{ "pattern": "delivery_completed", "detected_at": "...",
+  "detail": { "order_id": "uuid", "checkout_to_delivery_seconds": 47 } }
 ```
 
 ## Go Server Structure
