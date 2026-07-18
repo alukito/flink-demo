@@ -12,9 +12,13 @@ import (
 	"time"
 
 	"github.com/kuang/flink-demo/internal/auth"
+	"github.com/kuang/flink-demo/internal/buyer"
 	"github.com/kuang/flink-demo/internal/config"
 	"github.com/kuang/flink-demo/internal/kafkaclient"
+	"github.com/kuang/flink-demo/internal/product"
 	"github.com/kuang/flink-demo/internal/session"
+	"github.com/kuang/flink-demo/internal/shipper"
+	"github.com/kuang/flink-demo/internal/ws"
 	"github.com/kuang/flink-demo/web"
 )
 
@@ -25,6 +29,13 @@ type Server struct {
 	jwtMgr         *auth.JWTManager
 	sessionHandler *session.Handler
 	kafkaClient    *kafkaclient.Client
+	productHandler *product.Handler
+	buyerHandler   *buyer.Handler
+	shipperHandler *shipper.Handler
+	wsHandler      *ws.WSHandler
+	hub            *ws.Hub
+	consumer       *kafkaclient.Consumer
+	producer       *kafkaclient.Producer
 	httpServer     *http.Server
 	handler        http.Handler // exposed for testing
 }
@@ -36,6 +47,13 @@ func New(
 	jwtMgr *auth.JWTManager,
 	sessionHandler *session.Handler,
 	kafkaClient *kafkaclient.Client,
+	productHandler *product.Handler,
+	buyerHandler *buyer.Handler,
+	shipperHandler *shipper.Handler,
+	wsHandler *ws.WSHandler,
+	hub *ws.Hub,
+	consumer *kafkaclient.Consumer,
+	producer *kafkaclient.Producer,
 ) *Server {
 	s := &Server{
 		cfg:            cfg,
@@ -43,6 +61,13 @@ func New(
 		jwtMgr:         jwtMgr,
 		sessionHandler: sessionHandler,
 		kafkaClient:    kafkaClient,
+		productHandler: productHandler,
+		buyerHandler:   buyerHandler,
+		shipperHandler: shipperHandler,
+		wsHandler:      wsHandler,
+		hub:            hub,
+		consumer:       consumer,
+		producer:       producer,
 	}
 	s.handler = s.buildRoutes()
 	return s
@@ -55,17 +80,28 @@ func (s *Server) buildRoutes() http.Handler {
 	mux.HandleFunc("POST /api/session", s.sessionHandler.CreateSession)
 	mux.HandleFunc("GET /api/health", s.healthHandler)
 
+	// WebSocket endpoint
+	mux.HandleFunc("GET /ws", s.wsHandler.ServeWS)
+
 	// Auth middleware applied to all role-namespaced routes
 	authMW := s.jwtMgr.Middleware
 
-	// Seller routes (Phase 1: placeholder)
-	mux.Handle("/api/seller/", authMW(auth.RequireRole("seller")(http.HandlerFunc(s.placeholderHandler))))
+	// Seller routes
+	mux.Handle("POST /api/seller/products", authMW(auth.RequireRole("seller")(http.HandlerFunc(s.productHandler.AddProduct))))
+	mux.Handle("GET /api/seller/products", authMW(auth.RequireRole("seller")(http.HandlerFunc(s.productHandler.ListProducts))))
+	mux.Handle("GET /api/seller/orders", authMW(auth.RequireRole("seller")(http.HandlerFunc(s.productHandler.ListOrders))))
+	mux.Handle("POST /api/seller/orders/{id}/confirm", authMW(auth.RequireRole("seller")(http.HandlerFunc(s.productHandler.ConfirmOrder))))
 
-	// Buyer routes (Phase 1: placeholder)
-	mux.Handle("/api/buyer/", authMW(auth.RequireRole("buyer")(http.HandlerFunc(s.placeholderHandler))))
+	// Buyer routes
+	mux.Handle("GET /api/buyer/products", authMW(auth.RequireRole("buyer")(http.HandlerFunc(s.buyerHandler.ListProducts))))
+	mux.Handle("POST /api/buyer/cart/items", authMW(auth.RequireRole("buyer")(http.HandlerFunc(s.buyerHandler.AddToCart))))
+	mux.Handle("POST /api/buyer/cart/checkout", authMW(auth.RequireRole("buyer")(http.HandlerFunc(s.buyerHandler.Checkout))))
+	mux.Handle("GET /api/buyer/orders", authMW(auth.RequireRole("buyer")(http.HandlerFunc(s.buyerHandler.ListOrders))))
 
-	// Shipper routes (Phase 1: placeholder)
-	mux.Handle("/api/shipper/", authMW(auth.RequireRole("shipper")(http.HandlerFunc(s.placeholderHandler))))
+	// Shipper routes
+	mux.Handle("GET /api/shipper/jobs", authMW(auth.RequireRole("shipper")(http.HandlerFunc(s.shipperHandler.ListJobs))))
+	mux.Handle("POST /api/shipper/jobs/{id}/pick", authMW(auth.RequireRole("shipper")(http.HandlerFunc(s.shipperHandler.PickJob))))
+	mux.Handle("POST /api/shipper/jobs/{id}/deliver", authMW(auth.RequireRole("shipper")(http.HandlerFunc(s.shipperHandler.DeliverJob))))
 
 	// Static files — serve embedded React build from the web package
 	distFS, err := fs.Sub(web.DistFS, "dist")
@@ -83,15 +119,6 @@ func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
-}
-
-func (s *Server) placeholderHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{
-		"status": "not implemented",
-		"path":   r.URL.Path,
-	})
 }
 
 // spaHandler wraps a file server to serve index.html for any path that
@@ -140,15 +167,26 @@ func (r *statusRecorder) WriteHeader(code int) {
 	r.ResponseWriter.WriteHeader(code)
 }
 
-// Start creates Kafka topics, then starts the HTTP server.
+// Start creates Kafka topics, starts the WebSocket hub and Kafka consumer,
+// then starts the HTTP server.
 func (s *Server) Start() error {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	s.logger.Info("creating kafka topics")
 	if err := s.kafkaClient.CreateTopics(ctx); err != nil {
 		s.logger.Warn("failed to create kafka topics", "error", err)
 	}
+
+	// Start WebSocket hub
+	go s.hub.Run()
+
+	// Start Kafka consumer
+	go func() {
+		if err := s.consumer.Start(ctx); err != nil {
+			s.logger.Error("kafka consumer stopped", "error", err)
+		}
+	}()
 
 	s.httpServer = &http.Server{
 		Addr:    ":" + s.cfg.Port,
@@ -168,6 +206,7 @@ func (s *Server) Start() error {
 
 	<-stop
 	s.logger.Info("shutting down")
+	s.hub.Close()
 	return s.Shutdown(context.Background())
 }
 

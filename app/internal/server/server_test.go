@@ -8,10 +8,15 @@ import (
 	"testing"
 
 	"github.com/kuang/flink-demo/internal/auth"
+	"github.com/kuang/flink-demo/internal/buyer"
 	"github.com/kuang/flink-demo/internal/config"
 	"github.com/kuang/flink-demo/internal/kafkaclient"
 	"github.com/kuang/flink-demo/internal/logging"
+	"github.com/kuang/flink-demo/internal/order"
+	"github.com/kuang/flink-demo/internal/product"
 	"github.com/kuang/flink-demo/internal/session"
+	"github.com/kuang/flink-demo/internal/shipper"
+	"github.com/kuang/flink-demo/internal/ws"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -27,7 +32,22 @@ func newTestServer() *Server {
 	sessionStore := session.NewStore()
 	sessionHandler := session.NewHandler(sessionStore, jwtMgr)
 	kafkaClient := kafkaclient.NewClient(cfg.KafkaAddr)
-	return New(cfg, logging.NewLogger(), jwtMgr, sessionHandler, kafkaClient)
+	producer := kafkaclient.NewProducer(cfg.KafkaAddr)
+
+	productStore := product.NewStore()
+	orderStore := order.NewStore()
+
+	productHandler := product.NewHandler(productStore, orderStore, producer)
+	buyerHandler := buyer.NewHandler(productStore, orderStore, producer)
+	shipperHandler := shipper.NewHandler(orderStore, producer)
+
+	hub := ws.NewHub()
+	wsHandler := ws.NewHandler(jwtMgr, hub)
+	consumer := kafkaclient.NewConsumer(cfg.KafkaAddr, hub)
+
+	return New(cfg, logging.NewLogger(), jwtMgr, sessionHandler, kafkaClient,
+		productHandler, buyerHandler, shipperHandler,
+		wsHandler, hub, consumer, producer)
 }
 
 func TestHealthCheck(t *testing.T) {
