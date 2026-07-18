@@ -446,6 +446,37 @@ Demo-appropriate, not over-engineered:
 - **Invalid role action** (e.g., buyer calling seller endpoint): JWT middleware returns 403.
 - **Duplicate session name:** `/api/session` rejects names already taken — keeps the demo clean.
 
+## Logging
+
+Structured JSON logs to stdout — Docker Compose captures them, viewable via `docker compose logs <service>`. No external log aggregation. The goal: when something doesn't work during a demo, you can `docker compose logs -f app` and trace the flow.
+
+**Go server log points:**
+
+| Event | Level | Fields |
+|-------|-------|--------|
+| Session created | INFO | name, role |
+| Role check failed (403) | WARN | path, expected_role, actual_role |
+| Kafka event produced | DEBUG | topic, event_type, event_id |
+| Kafka event consumed | DEBUG | topic, event_type, event_id |
+| State transition | INFO | order_id, from_status, to_status, actor |
+| WebSocket connect/disconnect | INFO | client_name, role, connection_id |
+| WebSocket event pushed | DEBUG | client_name, event_type |
+| Mutex contention / 409 conflict | WARN | order_id, actor, reason |
+
+**Flink log points:**
+
+| Event | Level | Fields |
+|-------|-------|--------|
+| Job started | INFO | job_name |
+| Window emitted | DEBUG | metric, scope, value |
+| CEP pattern detected | INFO | pattern, detail |
+
+**REST request log** — one line per request via standard middleware: method, path, status, duration. No manual logging needed in handlers.
+
+**Operational notes:**
+- No file logs, no runtime-configurable log levels — keep it simple.
+- If output is too noisy during a demo, filter with `docker compose logs app | grep -v DEBUG`.
+
 ## Testing
 
 - **Flink jobs:** Unit tests using Flink's `MiniClusterWithClientResource` — runs jobs in-process, no Docker needed.
@@ -458,7 +489,7 @@ Demo-appropriate, not over-engineered:
 - No database — in-memory state only
 - No user accounts or persistent sessions across server restarts
 - No frontend tests
-- No production-grade observability (logging/metrics/tracing)
+- No production-grade observability — light stdout logging only (see Logging section), no metrics/tracing/external aggregation
 - No multi-tenant support
 - No horizontal scaling — single VPS, single instance of each service
 - No product catalog seeding tools — seller adds products live or via the UI
