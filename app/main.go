@@ -1,12 +1,14 @@
 package main
 
 import (
-	"os"
-	"os/signal"
-	"syscall"
+	"log/slog"
 
+	"github.com/kuang/flink-demo/internal/auth"
 	"github.com/kuang/flink-demo/internal/config"
+	"github.com/kuang/flink-demo/internal/kafkaclient"
 	"github.com/kuang/flink-demo/internal/logging"
+	"github.com/kuang/flink-demo/internal/server"
+	"github.com/kuang/flink-demo/internal/session"
 )
 
 func main() {
@@ -18,9 +20,14 @@ func main() {
 		"kafka_addr", cfg.KafkaAddr,
 	)
 
-	// Phase 1 placeholder — full server wiring added in Task 5
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
-	<-stop
-	logger.Info("shutting down")
+	jwtMgr := auth.NewJWTManager(cfg.JWTSecret)
+	sessionStore := session.NewStore()
+	sessionHandler := session.NewHandler(sessionStore, jwtMgr)
+	kafkaClient := kafkaclient.NewClient(cfg.KafkaAddr)
+
+	srv := server.New(cfg, logger, jwtMgr, sessionHandler, kafkaClient)
+
+	if err := srv.Start(); err != nil {
+		slog.Error("server failed", "error", err)
+	}
 }
