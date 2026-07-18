@@ -73,3 +73,17 @@ func (s *Store) BySeller(sellerID string) []Product {
 	}
 	return result
 }
+
+// DecrementQuantity reduces the available quantity of a product.
+// Returns false if the product doesn't exist or has insufficient stock.
+func (s *Store) DecrementQuantity(productID string, qty int) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, ok := s.products[productID]
+	if !ok || p.Quantity < qty {
+		return false
+	}
+	p.Quantity -= qty
+	s.products[productID] = p
+	return true
+}

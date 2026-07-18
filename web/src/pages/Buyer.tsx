@@ -25,6 +25,10 @@ interface Order {
   status: string; created_at: string;
 }
 
+function formatPrice(price: number): string {
+  return 'Rp ' + price.toLocaleString('id-ID');
+}
+
 export default function Buyer() {
   const { name, token, clearSession } = useSession();
   const navigate = useNavigate();
@@ -37,6 +41,8 @@ export default function Buyer() {
   const [shippingAddress, setShippingAddress] = useState('');
   const [error, setError] = useState('');
   const [showCheckout, setShowCheckout] = useState(false);
+  const [checkingOut, setCheckingOut] = useState(false);
+  const [cartAddingId, setCartAddingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!name || !token) { navigate('/'); }
@@ -56,12 +62,10 @@ export default function Buyer() {
 
   useEffect(() => { loadProducts(); loadOrders(); }, [loadProducts, loadOrders]);
 
-  // Listen for new product.listed events to refresh catalog
   useEffect(() => {
     if (events.some(e => e.event_type === 'product.listed')) loadProducts();
   }, [events, loadProducts]);
 
-  // Listen for order status updates
   useEffect(() => {
     const hasOrderUpdate = events.some(e =>
       ['order.confirmed', 'shipment.picked', 'shipment.delivered'].includes(e.event_type) &&
@@ -73,34 +77,44 @@ export default function Buyer() {
   const cartTotal = cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
 
   const handleAddToCart = async (product: Product) => {
-    if (!token) return;
-    const existing = cart.find((item) => item.product.id === product.id);
-    if (existing) {
-      setCart(cart.map((item) =>
-        item.product.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
-      ));
-    } else {
-      setCart([...cart, { product, quantity: 1 }]);
+    if (!token || cartAddingId) return;
+    setCartAddingId(product.id);
+    try {
+      const existing = cart.find((item) => item.product.id === product.id);
+      if (existing) {
+        setCart(cart.map((item) =>
+          item.product.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
+        ));
+      } else {
+        setCart([...cart, { product, quantity: 1 }]);
+      }
+      await addToCart(token, product.id, 1);
+    } finally {
+      setCartAddingId(null);
     }
-    await addToCart(token, product.id, 1);
   };
 
   const handleCheckout = async () => {
-    if (!token || cart.length === 0) return;
+    if (!token || cart.length === 0 || checkingOut) return;
     setError('');
-    const items = cart.map((item) => ({
-      product_id: item.product.id,
-      quantity: item.quantity,
-    }));
-    const resp = await checkout(token, items, shippingAddress);
-    if (!resp.ok) {
-      setError(await resp.text());
-      return;
+    setCheckingOut(true);
+    try {
+      const items = cart.map((item) => ({
+        product_id: item.product.id,
+        quantity: item.quantity,
+      }));
+      const resp = await checkout(token, items, shippingAddress);
+      if (!resp.ok) {
+        setError(await resp.text());
+        return;
+      }
+      setCart([]);
+      setShippingAddress('');
+      setShowCheckout(false);
+      loadOrders();
+    } finally {
+      setCheckingOut(false);
     }
-    setCart([]);
-    setShippingAddress('');
-    setShowCheckout(false);
-    loadOrders();
   };
 
   const handleLogout = () => {
@@ -116,7 +130,7 @@ export default function Buyer() {
         <h1>Buyer: {name}</h1>
         <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
           <span style={{ padding: '4px 12px', borderRadius: '4px', background: '#e0e7ff', fontSize: '14px' }}>
-            Cart: {cart.length} items — ${(cartTotal / 100).toFixed(2)}
+            Cart: {cart.length} items — {formatPrice(cartTotal)}
           </span>
           {cart.length > 0 && (
             <button onClick={() => setShowCheckout(!showCheckout)} style={{ padding: '6px 16px' }}>
@@ -145,20 +159,20 @@ export default function Buyer() {
               {cart.map((item) => (
                 <div key={item.product.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
                   <span>{item.quantity}x {item.product.name}</span>
-                  <span>${(item.product.price * item.quantity / 100).toFixed(2)}</span>
+                  <span>{formatPrice(item.product.price * item.quantity)}</span>
                 </div>
               ))}
               <div style={{ fontWeight: 'bold', borderTop: '1px solid #e5e7eb', paddingTop: '8px' }}>
-                Total: ${(cartTotal / 100).toFixed(2)}
+                Total: {formatPrice(cartTotal)}
               </div>
             </div>
             {error && <p style={{ color: 'red', marginBottom: '8px' }}>{error}</p>}
             <button
               onClick={handleCheckout}
-              disabled={!shippingAddress}
+              disabled={!shippingAddress || checkingOut}
               style={{ padding: '8px 24px' }}
             >
-              Place Order
+              {checkingOut ? 'Placing Order...' : 'Place Order'}
             </button>
           </div>
         </div>
@@ -177,13 +191,14 @@ export default function Buyer() {
                 minWidth: '200px', background: '#f9fafb',
               }}>
                 <div style={{ fontWeight: 'bold' }}>{p.name}</div>
-                <div style={{ color: '#6b7280' }}>${(p.price / 100).toFixed(2)}</div>
+                <div style={{ color: '#6b7280' }}>{formatPrice(p.price)}</div>
                 <div style={{ color: '#9ca3af', fontSize: '12px' }}>by {p.seller_id}</div>
                 <button
                   onClick={() => handleAddToCart(p)}
+                  disabled={cartAddingId === p.id}
                   style={{ marginTop: '8px', padding: '4px 16px', fontSize: '12px' }}
                 >
-                  Add to Cart
+                  {cartAddingId === p.id ? 'Adding...' : 'Add to Cart'}
                 </button>
               </div>
             ))
@@ -203,7 +218,7 @@ export default function Buyer() {
               marginBottom: '12px', background: '#f9fafb',
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ fontWeight: 'bold' }}>Order from {o.seller_id}</span>
+                <span style={{ fontWeight: 'bold' }}>Purchase from {o.seller_id}</span>
                 <span style={{
                   padding: '2px 8px', borderRadius: '4px', fontSize: '12px',
                   background: o.status === 'delivered' ? '#d1fae5' : o.status === 'picked' ? '#fed7aa' : o.status === 'confirmed' ? '#bfdbfe' : '#fef3c7',
@@ -218,7 +233,7 @@ export default function Buyer() {
                 ))}
               </div>
               <div style={{ marginTop: '8px', fontWeight: 'bold' }}>
-                Total: ${(o.total_amount / 100).toFixed(2)}
+                Total: {formatPrice(o.total_amount)}
               </div>
             </div>
           ))

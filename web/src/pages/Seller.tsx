@@ -21,6 +21,10 @@ interface Order {
   status: string; created_at: string;
 }
 
+function formatPrice(price: number): string {
+  return 'Rp ' + price.toLocaleString('id-ID');
+}
+
 export default function Seller() {
   const { name, token, clearSession } = useSession();
   const navigate = useNavigate();
@@ -31,8 +35,9 @@ export default function Seller() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [newProduct, setNewProduct] = useState({ name: '', price: '', quantity: '' });
   const [error, setError] = useState('');
+  const [adding, setAdding] = useState(false);
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
-  // Guard
   useEffect(() => {
     if (!name || !token) { navigate('/'); }
   }, [name, token, navigate]);
@@ -51,14 +56,13 @@ export default function Seller() {
 
   useEffect(() => { loadProducts(); loadOrders(); }, [loadProducts, loadOrders]);
 
-  // Listen for new checkout events to refresh orders
   useEffect(() => {
     const hasNewCheckout = events.some(e => e.event_type === 'cart.checkout' && e.payload?.seller_id === name);
     if (hasNewCheckout) loadOrders();
   }, [events, name, loadOrders]);
 
   const handleAddProduct = async () => {
-    if (!token) return;
+    if (!token || adding) return;
     setError('');
     const price = parseInt(newProduct.price);
     const quantity = parseInt(newProduct.quantity);
@@ -66,19 +70,29 @@ export default function Seller() {
       setError('Name and positive price are required');
       return;
     }
-    const resp = await addProduct(token, newProduct.name, price, quantity || 0);
-    if (!resp.ok) {
-      setError(await resp.text());
-      return;
+    setAdding(true);
+    try {
+      const resp = await addProduct(token, newProduct.name, price, quantity || 0);
+      if (!resp.ok) {
+        setError(await resp.text());
+        return;
+      }
+      setNewProduct({ name: '', price: '', quantity: '' });
+      loadProducts();
+    } finally {
+      setAdding(false);
     }
-    setNewProduct({ name: '', price: '', quantity: '' });
-    loadProducts();
   };
 
   const handleConfirmOrder = async (orderId: string) => {
-    if (!token) return;
-    const resp = await confirmOrder(token, orderId);
-    if (resp.ok) loadOrders();
+    if (!token || confirmingId) return;
+    setConfirmingId(orderId);
+    try {
+      const resp = await confirmOrder(token, orderId);
+      if (resp.ok) loadOrders();
+    } finally {
+      setConfirmingId(null);
+    }
   };
 
   const handleLogout = () => {
@@ -106,11 +120,11 @@ export default function Seller() {
             style={{ flex: 1, padding: '8px' }}
           />
           <input
-            placeholder="Price (cents)"
+            placeholder="Price (Rp)"
             type="number"
             value={newProduct.price}
             onChange={(e) => setNewProduct({ ...newProduct, price: e.target.value })}
-            style={{ width: '120px', padding: '8px' }}
+            style={{ width: '140px', padding: '8px' }}
           />
           <input
             placeholder="Quantity"
@@ -119,7 +133,9 @@ export default function Seller() {
             onChange={(e) => setNewProduct({ ...newProduct, quantity: e.target.value })}
             style={{ width: '100px', padding: '8px' }}
           />
-          <button onClick={handleAddProduct} style={{ padding: '8px 24px' }}>Add</button>
+          <button onClick={handleAddProduct} disabled={adding} style={{ padding: '8px 24px' }}>
+            {adding ? 'Adding...' : 'Add'}
+          </button>
         </div>
         {error && <p style={{ color: 'red', marginTop: '8px' }}>{error}</p>}
 
@@ -134,7 +150,7 @@ export default function Seller() {
                 minWidth: '200px', background: '#f9fafb',
               }}>
                 <div style={{ fontWeight: 'bold' }}>{p.name}</div>
-                <div style={{ color: '#6b7280' }}>${(p.price / 100).toFixed(2)}</div>
+                <div style={{ color: '#6b7280' }}>{formatPrice(p.price)}</div>
                 <div style={{ color: '#6b7280', fontSize: '12px' }}>Qty: {p.quantity}</div>
               </div>
             ))
@@ -155,7 +171,7 @@ export default function Seller() {
                 marginBottom: '12px', background: '#f9fafb',
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ fontWeight: 'bold' }}>Order from {o.buyer_id}</span>
+                  <span style={{ fontWeight: 'bold' }}>Sale to {o.buyer_id}</span>
                   <span style={{
                     padding: '2px 8px', borderRadius: '4px', fontSize: '12px',
                     background: o.status === 'checkout' ? '#fef3c7' : '#d1fae5',
@@ -166,11 +182,11 @@ export default function Seller() {
                 </div>
                 <div style={{ marginTop: '8px', fontSize: '14px', color: '#6b7280' }}>
                   {o.items.map((item, i) => (
-                    <div key={i}>{item.quantity}x {item.product_name} (${(item.unit_price / 100).toFixed(2)})</div>
+                    <div key={i}>{item.quantity}x {item.product_name} ({formatPrice(item.unit_price)})</div>
                   ))}
                 </div>
                 <div style={{ marginTop: '8px', fontWeight: 'bold' }}>
-                  Total: ${(o.total_amount / 100).toFixed(2)}
+                  Total: {formatPrice(o.total_amount)}
                 </div>
                 <div style={{ marginTop: '4px', color: '#6b7280', fontSize: '12px' }}>
                   Ship to: {o.shipping_address}
@@ -178,9 +194,10 @@ export default function Seller() {
                 {o.status === 'checkout' && (
                   <button
                     onClick={() => handleConfirmOrder(o.id)}
+                    disabled={confirmingId === o.id}
                     style={{ marginTop: '12px', padding: '6px 20px' }}
                   >
-                    Confirm Order
+                    {confirmingId === o.id ? 'Confirming...' : 'Confirm Order'}
                   </button>
                 )}
               </div>

@@ -32,7 +32,7 @@ function EventRow({ event }: { event: EventEnvelope }) {
 }
 
 export default function Dashboard() {
-  const { events, addEvent } = useEvents();
+  const { events, addEvent, clearEvents } = useEvents();
   const [wsEvent, setWsEvent] = useState<(event: EventEnvelope) => void>(() => () => {});
   const { connected } = useWebSocket(wsEvent);
   const [connecting, setConnecting] = useState(true);
@@ -76,8 +76,8 @@ export default function Dashboard() {
           }}>
             {connected ? 'Connected' : connecting ? 'Connecting...' : 'Disconnected'}
           </span>
-          <button onClick={() => window.location.reload()} style={{ padding: '6px 16px', fontSize: '12px' }}>
-            Refresh
+          <button onClick={clearEvents} style={{ padding: '6px 16px', fontSize: '12px' }}>
+            Clear
           </button>
         </div>
       </div>

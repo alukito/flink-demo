@@ -77,7 +77,7 @@ func TestAddToCartProductNotFound(t *testing.T) {
 
 func TestCheckoutSingleSeller(t *testing.T) {
 	h, prodStore, orderStore := newTestHandler(t)
-	prodStore.Add(product.Product{ID: "p1", Name: "Widget", Price: 500, SellerID: "seller1", ListedAt: time.Now()})
+	prodStore.Add(product.Product{ID: "p1", Name: "Widget", Price: 500, Quantity: 10, SellerID: "seller1", ListedAt: time.Now()})
 
 	body := strings.NewReader(`{"items":[{"product_id":"p1","quantity":2}],"shipping_address":"123 Main St"}`)
 	req := httptest.NewRequest("POST", "/api/buyer/cart/checkout", body)
@@ -101,8 +101,8 @@ func TestCheckoutSingleSeller(t *testing.T) {
 
 func TestCheckoutMultiSellerSplit(t *testing.T) {
 	h, prodStore, orderStore := newTestHandler(t)
-	prodStore.Add(product.Product{ID: "p1", Name: "A", Price: 100, SellerID: "seller1", ListedAt: time.Now()})
-	prodStore.Add(product.Product{ID: "p2", Name: "B", Price: 200, SellerID: "seller2", ListedAt: time.Now()})
+	prodStore.Add(product.Product{ID: "p1", Name: "A", Price: 100, Quantity: 10, SellerID: "seller1", ListedAt: time.Now()})
+	prodStore.Add(product.Product{ID: "p2", Name: "B", Price: 200, Quantity: 10, SellerID: "seller2", ListedAt: time.Now()})
 
 	body := strings.NewReader(`{"items":[{"product_id":"p1","quantity":1},{"product_id":"p2","quantity":3}],"shipping_address":"456 Oak Ave"}`)
 	req := httptest.NewRequest("POST", "/api/buyer/cart/checkout", body)
@@ -153,6 +153,19 @@ func TestCheckoutProductNotFound(t *testing.T) {
 	h, _, _ := newTestHandler(t)
 
 	body := strings.NewReader(`{"items":[{"product_id":"nonexistent","quantity":1}],"shipping_address":"123"}`)
+	req := httptest.NewRequest("POST", "/api/buyer/cart/checkout", body)
+	req = req.WithContext(claimsContext("buyer1", "buyer"))
+	rec := httptest.NewRecorder()
+	h.Checkout(rec, req)
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestCheckoutInsufficientStock(t *testing.T) {
+	h, prodStore, _ := newTestHandler(t)
+	prodStore.Add(product.Product{ID: "p1", Name: "Rare", Price: 100, Quantity: 2, SellerID: "seller1", ListedAt: time.Now()})
+
+	body := strings.NewReader(`{"items":[{"product_id":"p1","quantity":5}],"shipping_address":"123"}`)
 	req := httptest.NewRequest("POST", "/api/buyer/cart/checkout", body)
 	req = req.WithContext(claimsContext("buyer1", "buyer"))
 	rec := httptest.NewRecorder()

@@ -24,8 +24,10 @@ export default function Shipper() {
   useWebSocket(addEvent);
 
   const [jobs, setJobs] = useState<Order[]>([]);
-  const [pickedOrders, setPickedOrders] = useState<Record<string, number>>({}); // orderID → countdown seconds remaining
+  const [pickedOrders, setPickedOrders] = useState<Record<string, number>>({});
   const [error, setError] = useState('');
+  const [pickingId, setPickingId] = useState<string | null>(null);
+  const [deliveringId, setDeliveringId] = useState<string | null>(null);
   const countdownRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -40,12 +42,10 @@ export default function Shipper() {
 
   useEffect(() => { loadJobs(); }, [loadJobs]);
 
-  // Listen for order.confirmed events to refresh job board
   useEffect(() => {
     if (events.some(e => e.event_type === 'order.confirmed')) loadJobs();
   }, [events, loadJobs]);
 
-  // Countdown timer effect
   useEffect(() => {
     const hasActiveCountdowns = Object.values(pickedOrders).some((s) => s > 0);
     if (!hasActiveCountdowns) {
@@ -75,34 +75,42 @@ export default function Shipper() {
   }, [pickedOrders]);
 
   const handlePickJob = async (orderId: string) => {
-    if (!token) return;
+    if (!token || pickingId) return;
     setError('');
-    const resp = await pickJob(token, orderId);
-    if (!resp.ok) {
-      if (resp.status === 409) {
-        setError('Job already picked by another shipper');
-      } else {
-        setError(await resp.text());
+    setPickingId(orderId);
+    try {
+      const resp = await pickJob(token, orderId);
+      if (!resp.ok) {
+        if (resp.status === 409) {
+          setError('Job already picked by another shipper');
+        } else {
+          setError(await resp.text());
+        }
+        loadJobs();
+        return;
       }
-      loadJobs();
-      return;
+      const countdown = Math.floor(Math.random() * 11) + 5;
+      setPickedOrders((prev) => ({ ...prev, [orderId]: countdown }));
+      setJobs((prev) => prev.filter((j) => j.id !== orderId));
+    } finally {
+      setPickingId(null);
     }
-    // Start countdown: random 5-15 seconds
-    const countdown = Math.floor(Math.random() * 11) + 5;
-    setPickedOrders((prev) => ({ ...prev, [orderId]: countdown }));
-    // Remove from job board
-    setJobs((prev) => prev.filter((j) => j.id !== orderId));
   };
 
   const handleDeliver = async (orderId: string) => {
-    if (!token) return;
-    const resp = await deliverJob(token, orderId);
-    if (resp.ok) {
-      setPickedOrders((prev) => {
-        const next = { ...prev };
-        delete next[orderId];
-        return next;
-      });
+    if (!token || deliveringId) return;
+    setDeliveringId(orderId);
+    try {
+      const resp = await deliverJob(token, orderId);
+      if (resp.ok) {
+        setPickedOrders((prev) => {
+          const next = { ...prev };
+          delete next[orderId];
+          return next;
+        });
+      }
+    } finally {
+      setDeliveringId(null);
     }
   };
 
@@ -137,7 +145,7 @@ export default function Shipper() {
                 padding: '16px', borderRadius: '6px', border: '1px solid #d1d5db',
                 marginBottom: '12px', background: '#f9fafb',
               }}>
-                <div style={{ fontWeight: 'bold' }}>Order from {job.buyer_id}</div>
+                <div style={{ fontWeight: 'bold' }}>Delivery to {job.buyer_id}</div>
                 <div style={{ marginTop: '8px', fontSize: '14px', color: '#6b7280' }}>
                   {job.items.map((item, i) => (
                     <div key={i}>{item.quantity}x {item.product_name}</div>
@@ -148,9 +156,10 @@ export default function Shipper() {
                 </div>
                 <button
                   onClick={() => handlePickJob(job.id)}
+                  disabled={pickingId === job.id}
                   style={{ marginTop: '12px', padding: '6px 20px' }}
                 >
-                  Pick Up Job
+                  {pickingId === job.id ? 'Picking...' : 'Pick Up Job'}
                 </button>
               </div>
             ))
@@ -192,9 +201,10 @@ export default function Shipper() {
               <div style={{ color: '#059669', marginTop: '4px' }}>Transit complete!</div>
               <button
                 onClick={() => handleDeliver(orderId)}
+                disabled={deliveringId === orderId}
                 style={{ marginTop: '12px', padding: '6px 20px', background: '#059669' }}
               >
-                Mark Delivered
+                {deliveringId === orderId ? 'Delivering...' : 'Mark Delivered'}
               </button>
             </div>
           ))}

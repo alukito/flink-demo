@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -133,6 +134,16 @@ func (h *Handler) Checkout(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		if item.Quantity <= 0 {
+			http.Error(w, "quantity must be positive for product: "+p.Name, http.StatusBadRequest)
+			return
+		}
+
+		if item.Quantity > p.Quantity {
+			http.Error(w, "insufficient stock for product: "+p.Name+" (available: "+strconv.Itoa(p.Quantity)+", requested: "+strconv.Itoa(item.Quantity)+")", http.StatusBadRequest)
+			return
+		}
+
 		g, ok := groups[p.SellerID]
 		if !ok {
 			g = &sellerGroup{}
@@ -162,6 +173,11 @@ func (h *Handler) Checkout(w http.ResponseWriter, r *http.Request) {
 			CreatedAt:       time.Now(),
 		}
 		h.orders.Create(o)
+
+		// Decrement product quantities
+		for _, item := range g.items {
+			h.products.DecrementQuantity(item.ProductID, item.Quantity)
+		}
 
 		// Produce cart.checkout event (one per seller)
 		itemsPayload := make([]map[string]any, len(g.items))
