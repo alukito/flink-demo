@@ -1,0 +1,9 @@
+com/flinkdemo/level2/function/DailyAggregateFunction.class
+com/flinkdemo/level2/serde/WindowStatSchema.class
+com/flinkdemo/level2/function/CountAggregate.class
+com/flinkdemo/level2/MetricDefinition.class
+com/flinkdemo/level2/function/TopProductWindowFunction.class
+com/flinkdemo/level2/model/EventEnvelope.class
+com/flinkdemo/level2/serde/EventEnvelopeSchema.class
+com/flinkdemo/level2/model/WindowStat.class
+com/flinkdemo/level2/function/CountWindowResult.class
