@@ -32,3 +32,27 @@ input {
   border: 1px solid #d1d5db;
   border-radius: 6px;
 }
+
+.dashboard { padding: 20px; max-width: 1500px; margin: 0 auto; }
+.dashboard section { margin-bottom: 24px; }
+.dashboard section > p { color: #6b7280; margin: 4px 0 12px; }
+.dashboard-header, .dashboard-header > div, .metric-values { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.dashboard-header { margin-bottom: 20px; }
+.connection { padding: 4px 12px; border-radius: 12px; background: #fee2e2; color: #dc2626; font-size: 12px; }
+.connection.connected { background: #d1fae5; color: #059669; }
+.dashboard-header button { padding: 6px 16px; }
+.event-feed { background: white; border: 1px solid #e5e7eb; border-radius: 8px; max-height: 280px; overflow: auto; }
+.event-row { display: grid; grid-template-columns: 90px 170px 110px 1fr; gap: 12px; padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font: 13px monospace; }
+.event-row span:first-child { color: #9ca3af; }
+.empty { padding: 36px; text-align: center; color: #9ca3af; }
+.metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.metric-card { min-width: 0; padding: 16px; background: white; border: 1px solid #e5e7eb; border-radius: 8px; }
+.metric-values { margin: 12px 0; }
+.metric-values div { display: flex; flex-direction: column; }
+.metric-values span { color: #6b7280; font-size: 12px; }
+.metric-values strong { font-size: 22px; }
+.metric-detail { height: 20px; color: #7c3aed; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.metric-chart { height: 90px; display: flex; align-items: flex-end; gap: 3px; padding-top: 10px; border-bottom: 1px solid #d1d5db; }
+.metric-bar { flex: 1; min-width: 3px; max-width: 14px; border-radius: 3px 3px 0 0; background: linear-gradient(#60a5fa, #2563eb); }
+.empty-chart { margin: auto; color: #9ca3af; font-size: 12px; }
+@media (max-width: 700px) { .event-row { grid-template-columns: 80px 1fr; } .event-row span:nth-child(n+3) { display: none; } }

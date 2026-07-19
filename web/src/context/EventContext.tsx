@@ -9,6 +9,19 @@ export interface EventEnvelope {
   payload: Record<string, any>;
 }
 
+export type MetricName = 'listings_count' | 'cart_adds_count' | 'tx_count' | 'confirmed_orders' | 'delivered_orders' | 'top_product' | 'revenue';
+export interface WindowStat {
+  metric: MetricName;
+  scope: 'window' | 'daily';
+  window_end: string;
+  value: number;
+  detail: Record<string, string>;
+}
+export type DashboardMessage = EventEnvelope | WindowStat;
+export function isWindowStat(value: DashboardMessage): value is WindowStat {
+  return 'metric' in value && 'scope' in value && 'window_end' in value;
+}
+
 interface EventState {
   events: EventEnvelope[];
   addEvent: (event: EventEnvelope) => void;

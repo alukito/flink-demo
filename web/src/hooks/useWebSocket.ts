@@ -10,7 +10,7 @@ import type { EventEnvelope } from '../context/EventContext';
  * token. This lets the Dashboard connect with its own auto-created
  * dashboard token without polluting the shared SessionContext.
  */
-export function useWebSocket(onEvent: (event: EventEnvelope) => void, overrideToken?: string | null) {
+export function useWebSocket<T = EventEnvelope>(onEvent: (event: T) => void, overrideToken?: string | null) {
   const { token: sessionToken } = useSession();
   const token = overrideToken ?? sessionToken;
   const wsRef = useRef<WebSocket | null>(null);
@@ -35,7 +35,7 @@ export function useWebSocket(onEvent: (event: EventEnvelope) => void, overrideTo
 
     ws.onmessage = (e) => {
       try {
-        const event: EventEnvelope = JSON.parse(e.data);
+        const event: T = JSON.parse(e.data) as T;
         onEventRef.current(event);
       } catch (err) {
         console.error('[ws] failed to parse message', err);
