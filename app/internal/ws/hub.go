@@ -24,6 +24,7 @@ type Hub struct {
 	Register   chan *Client
 	Unregister chan *Client
 	broadcast  chan event.EventEnvelope
+	raw        chan []byte
 	done       chan struct{}
 }
 
@@ -34,6 +35,7 @@ func NewHub() *Hub {
 		Register:   make(chan *Client),
 		Unregister: make(chan *Client),
 		broadcast:  make(chan event.EventEnvelope, 100),
+		raw:        make(chan []byte, 100),
 		done:       make(chan struct{}),
 	}
 }
@@ -75,6 +77,20 @@ func (h *Hub) Run() {
 			}
 			h.mu.RUnlock()
 
+		case data := <-h.raw:
+			h.mu.RLock()
+			for client := range h.clients {
+				if client.Role != "dashboard" {
+					continue
+				}
+				message := append([]byte(nil), data...)
+				select {
+				case client.send <- message:
+				default:
+				}
+			}
+			h.mu.RUnlock()
+
 		case <-h.done:
 			return
 		}
@@ -87,6 +103,16 @@ func (h *Hub) Broadcast(ev event.EventEnvelope) {
 	case h.broadcast <- ev:
 	default:
 		slog.Warn("broadcast channel full, dropping event")
+	}
+}
+
+// BroadcastRaw sends a raw Flink output message to dashboard clients.
+func (h *Hub) BroadcastRaw(data []byte) {
+	message := append([]byte(nil), data...)
+	select {
+	case h.raw <- message:
+	default:
+		slog.Warn("raw broadcast channel full, dropping event")
 	}
 }
 

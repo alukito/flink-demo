@@ -2,6 +2,7 @@ package ws
 
 import (
 	"testing"
+	"time"
 
 	"github.com/kuang/flink-demo/internal/event"
 	"github.com/stretchr/testify/assert"
@@ -20,6 +21,21 @@ func TestHubRegisterAndUnregister(t *testing.T) {
 	// buffer is enough since Register is non-blocking)
 	hub.Unregister <- c
 	assert.True(t, true) // didn't panic
+}
+
+func TestBroadcastRawOnlyQueuesForDashboard(t *testing.T) {
+	hub := NewHub()
+	go hub.Run()
+	defer hub.Close()
+
+	dashboard := &Client{Name: "dash", Role: "dashboard", send: make(chan []byte, 1)}
+	buyer := &Client{Name: "buyer", Role: "buyer", send: make(chan []byte, 1)}
+	hub.Register <- dashboard
+	hub.Register <- buyer
+	hub.BroadcastRaw([]byte(`{"metric":"tx_count","scope":"window","window_end":"2026-07-18T10:05:00Z","value":7,"detail":{}}`))
+
+	assert.Eventually(t, func() bool { return len(dashboard.send) == 1 }, time.Second, 10*time.Millisecond)
+	assert.Empty(t, buyer.send)
 }
 
 func TestShouldSendToClient(t *testing.T) {
