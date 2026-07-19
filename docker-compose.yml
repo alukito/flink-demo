@@ -43,3 +43,49 @@ services:
       PORT: "8080"
     ports:
       - "15300:8080"
+
+  flink-jobmanager:
+    image: flink:1.19.3-scala_2.12-java11
+    command: jobmanager
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager
+        jobmanager.memory.process.size: 768m
+        restart-strategy.type: fixed-delay
+        restart-strategy.fixed-delay.attempts: 3
+        restart-strategy.fixed-delay.delay: 10s
+    ports:
+      - "8081:8081"
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://localhost:8081/overview >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  flink-taskmanager:
+    image: flink:1.19.3-scala_2.12-java11
+    command: taskmanager
+    depends_on:
+      flink-jobmanager:
+        condition: service_healthy
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager
+        taskmanager.numberOfTaskSlots: 8
+        taskmanager.memory.process.size: 1536m
+
+  flink-job-submit:
+    build:
+      context: .
+      dockerfile: flink/Dockerfile
+    depends_on:
+      kafka:
+        condition: service_healthy
+      flink-jobmanager:
+        condition: service_healthy
+      flink-taskmanager:
+        condition: service_started
+    restart: "no"
