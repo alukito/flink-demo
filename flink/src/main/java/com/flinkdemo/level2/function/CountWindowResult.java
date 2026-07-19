@@ -11,6 +11,9 @@ public final class CountWindowResult extends ProcessAllWindowFunction<Long, Wind
     private final String metric;
     public CountWindowResult(String metric) { this.metric = metric; }
     @Override public void process(Context context, Iterable<Long> values, Collector<WindowStat> out) {
-        out.collect(new WindowStat(metric, "window", Instant.ofEpochMilli(context.window().getEnd()).toString(), values.iterator().next(), Collections.emptyMap()));
+        process(context.window(), values, out);
+    }
+    public void process(TimeWindow window, Iterable<Long> values, Collector<WindowStat> out) {
+        out.collect(new WindowStat(metric, "window", Instant.ofEpochMilli(window.getEnd()).toString(), values.iterator().next(), Collections.emptyMap()));
     }
 }
