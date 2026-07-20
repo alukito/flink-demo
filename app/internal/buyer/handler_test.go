@@ -142,7 +142,7 @@ func TestCheckoutMultiSellerSplit(t *testing.T) {
 	}
 	require.NotNil(t, s1Order)
 	require.NotNil(t, s2Order)
-	assert.Equal(t, 100, s1Order.TotalAmount) // 100 * 1
+	assert.Equal(t, 100, s1Order.TotalAmount) // first seller's one-item order
 	assert.Equal(t, 600, s2Order.TotalAmount) // 200 * 3
 }
 

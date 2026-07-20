@@ -25,7 +25,7 @@ function EventRow({ event }: { event: EventEnvelope }) {
 function MetricChart({ points, rupiah }: { points: WindowStat[]; rupiah?: boolean }) {
   const max = Math.max(1, ...points.map((point) => point.value));
   return <div className="metric-chart" aria-label="Sliding window history">
-    {points.length === 0 ? <span className="empty-chart">Waiting for a window…</span> : points.map((point) => <div key={point.window_end} className="metric-bar" title={`${new Date(point.window_end).toLocaleTimeString()} — ${formatValue(point.value, rupiah)}`} style={{ height: `${Math.max(8, point.value / max * 100)}%` }} />)}
+    {points.length === 0 ? <span className="empty-chart">Waiting for a window…</span> : points.map((point) => <div key={point.window_end} className="metric-bar" title={`${new Date(point.window_end).toLocaleTimeString()} — ${formatValue(point.value, rupiah)}`} style={{ height: `${Math.max(8, point.value / max * 1e2)}%` }} />)}
   </div>;
 }
 
