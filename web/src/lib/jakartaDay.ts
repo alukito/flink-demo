@@ -33,3 +33,10 @@ export function millisecondsUntilNextJakartaMidnight(now: Date): number {
   const nextMidnight = Date.UTC(year, month - 1, day + 1) - JAKARTA_OFFSET_MS;
   return Math.max(1, nextMidnight - now.getTime());
 }
+
+export function jakartaRefreshSnapshot(now: Date): { day: string; delay: number } {
+  return {
+    day: jakartaDateKey(now),
+    delay: millisecondsUntilNextJakartaMidnight(now),
+  };
+}

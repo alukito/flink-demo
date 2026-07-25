@@ -3,9 +3,9 @@ import { useWebSocket } from '../hooks/useWebSocket';
 import { useEvents, isWindowStat, type DashboardMessage, type EventEnvelope, type MetricName, type WindowStat } from '../context/EventContext';
 import { createSession } from '../api/client';
 import {
-  jakartaDateKey,
   jakartaDayForWindowEnd,
-  millisecondsUntilNextJakartaMidnight,
+  jakartaDateKey,
+  jakartaRefreshSnapshot,
 } from '../lib/jakartaDay';
 
 const METRICS: Array<{ name: MetricName; label: string; window: boolean; daily: boolean; rupiah?: boolean }> = [
@@ -59,13 +59,14 @@ export default function Dashboard() {
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>;
-    const scheduleMidnightRefresh = () => {
+    const refreshAndSchedule = () => {
+      const snapshot = jakartaRefreshSnapshot(new Date());
+      setJakartaDay(snapshot.day);
       timer = setTimeout(() => {
-        setJakartaDay(jakartaDateKey(new Date()));
-        scheduleMidnightRefresh();
-      }, millisecondsUntilNextJakartaMidnight(new Date()) + 50);
+        refreshAndSchedule();
+      }, snapshot.delay + 50);
     };
-    scheduleMidnightRefresh();
+    refreshAndSchedule();
     return () => clearTimeout(timer);
   }, []);
 
