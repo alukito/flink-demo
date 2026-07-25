@@ -7,8 +7,6 @@ import com.flinkdemo.level2.function.TopProductWindowFunction;
 import com.flinkdemo.level2.model.EventEnvelope;
 import com.flinkdemo.level2.model.WindowStat;
 import java.time.Duration;
-import java.time.Instant;
-import java.time.ZoneOffset;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.api.java.utils.ParameterTool;
@@ -52,10 +50,7 @@ public final class MetricJob {
         }
         if (definition.hasDaily()) {
             DataStream<WindowStat> daily = source
-                .keyBy(event -> Instant.parse(event.getTimestamp())
-                    .atZone(ZoneOffset.UTC)
-                    .toLocalDate()
-                    .toString())
+                .keyBy(event -> DailyTime.dateKey(event.getTimestamp()))
                 .process(new DailyAggregateFunction(definition.metric(), definition.isRevenue()))
                 .name(definition.metric() + "-daily");
             output = output == null ? daily : output.union(daily);

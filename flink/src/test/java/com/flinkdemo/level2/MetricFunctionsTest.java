@@ -1,6 +1,7 @@
 package com.flinkdemo.level2;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -11,7 +12,6 @@ import com.flinkdemo.level2.function.TopProductWindowFunction;
 import com.flinkdemo.level2.model.EventEnvelope;
 import com.flinkdemo.level2.model.WindowStat;
 import java.time.Instant;
-import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -76,14 +76,31 @@ class MetricFunctionsTest {
         assertEquals(0, stat.getDetail().size());
     }
 
-    @Test void dailyAggregateKeepsIndependentUtcDayCounts() throws Exception {
-        List<WindowStat> output = runDaily("tx_count", false, List.of(
-            event("e1", "cart.checkout", "2026-07-18T10:00:00Z", "{}"),
-            event("e2", "cart.checkout", "2026-07-18T11:00:00Z", "{}"),
-            event("e3", "cart.checkout", "2026-07-19T09:00:00Z", "{}")));
+    @Test void dailyTimeUsesJakartaCalendarBoundary() {
+        assertEquals("2026-07-25", DailyTime.dateKey("2026-07-25T16:59:59Z"));
+        assertEquals("2026-07-26", DailyTime.dateKey("2026-07-25T17:00:00Z"));
+        assertNotEquals(
+            DailyTime.dateKey("2026-07-25T16:59:59Z"),
+            DailyTime.dateKey("2026-07-25T17:00:00Z"));
+        assertEquals("2026-07-25T17:00:00Z", DailyTime.windowEnd("2026-07-25"));
+        assertEquals("2026-07-26T17:00:00Z", DailyTime.windowEnd("2026-07-26"));
+    }
 
-        assertEquals(List.of(1L, 2L, 1L), output.stream().map(WindowStat::getValue).collect(Collectors.toList()));
-        assertEquals(List.of("2026-07-19T00:00:00Z", "2026-07-19T00:00:00Z", "2026-07-20T00:00:00Z"), output.stream().map(WindowStat::getWindowEnd).collect(Collectors.toList()));
+    @Test void dailyAggregateKeepsIndependentJakartaDayCounts() throws Exception {
+        List<WindowStat> output = runDaily("tx_count", false, List.of(
+            event("e1", "cart.checkout", "2026-07-25T16:00:00Z", "{}"),
+            event("e2", "cart.checkout", "2026-07-25T16:59:59Z", "{}"),
+            event("e3", "cart.checkout", "2026-07-25T17:00:00Z", "{}")));
+
+        assertEquals(
+            List.of(1L, 2L, 1L),
+            output.stream().map(WindowStat::getValue).collect(Collectors.toList()));
+        assertEquals(
+            List.of(
+                "2026-07-25T17:00:00Z",
+                "2026-07-25T17:00:00Z",
+                "2026-07-26T17:00:00Z"),
+            output.stream().map(WindowStat::getWindowEnd).collect(Collectors.toList()));
     }
 
     @Test void dailyAggregateSumsWholeRupiahAmounts() throws Exception {
@@ -101,7 +118,7 @@ class MetricFunctionsTest {
         List<WindowStat> output = new ArrayList<>();
         try (CloseableIterator<WindowStat> iterator = environment
             .fromData(events)
-            .keyBy(event -> LocalDate.parse(event.getTimestamp().substring(0, 10)).toString())
+            .keyBy(event -> DailyTime.dateKey(event.getTimestamp()))
             .process(new DailyAggregateFunction(metric, revenue))
             .executeAndCollect("daily-aggregate-test")) {
             while (iterator.hasNext()) output.add(iterator.next());
