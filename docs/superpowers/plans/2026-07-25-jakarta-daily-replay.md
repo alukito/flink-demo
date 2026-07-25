@@ -200,7 +200,7 @@ git commit -m "fix: use Jakarta days for daily Flink metrics"
 
 **Interfaces:**
 - `Hub.metricCache` stores one owned `[]byte` for each allowed `metric + "\x00" + scope` key.
-- `metricCacheKey([]byte): (string, bool)` accepts only the ten planned metric/scope combinations.
+- `metricCacheKey([]byte): (string, bool)` accepts only the nine planned metric/scope combinations.
 - `Hub.Run` replays cached values in sorted key order to a registering dashboard client.
 - `BroadcastRaw([]byte)` retains its non-blocking enqueue interface and source-copy guarantee.
 

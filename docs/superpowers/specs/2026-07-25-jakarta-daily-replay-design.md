@@ -36,7 +36,7 @@ The teaching text will say that daily totals reset at Jakarta midnight (WIB), no
 
 ## In-Memory Metric Replay
 
-The WebSocket hub will maintain a process-local cache keyed by `(metric, scope)`. The maximum expected cache is ten envelopes: seven window values and three daily values.
+The WebSocket hub will maintain a process-local cache keyed by `(metric, scope)`. The maximum expected cache is nine envelopes: six window values and three daily values.
 
 When `BroadcastRaw` receives a Level 2 envelope:
 
