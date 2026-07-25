@@ -3,11 +3,39 @@ package ws
 import (
 	"encoding/json"
 	"log/slog"
+	"sort"
 	"sync"
 
 	"github.com/coder/websocket"
 	"github.com/kuang/flink-demo/internal/event"
 )
+
+var allowedMetricScopes = map[string]map[string]bool{
+	"listings_count":   {"window": true},
+	"cart_adds_count":  {"window": true},
+	"tx_count":         {"window": true, "daily": true},
+	"confirmed_orders": {"window": true},
+	"delivered_orders": {"window": true, "daily": true},
+	"top_product":      {"window": true},
+	"revenue":          {"daily": true},
+}
+
+type metricIdentity struct {
+	Metric string `json:"metric"`
+	Scope  string `json:"scope"`
+}
+
+func metricCacheKey(data []byte) (string, bool) {
+	var identity metricIdentity
+	if err := json.Unmarshal(data, &identity); err != nil {
+		return "", false
+	}
+	scopes, ok := allowedMetricScopes[identity.Metric]
+	if !ok || !scopes[identity.Scope] {
+		return "", false
+	}
+	return identity.Metric + "\x00" + identity.Scope, true
+}
 
 // Client represents a connected WebSocket client.
 type Client struct {
@@ -19,24 +47,26 @@ type Client struct {
 
 // Hub manages connected WebSocket clients and broadcasts events to them.
 type Hub struct {
-	mu         sync.RWMutex
-	clients    map[*Client]bool
-	Register   chan *Client
-	Unregister chan *Client
-	broadcast  chan event.EventEnvelope
-	raw        chan []byte
-	done       chan struct{}
+	mu          sync.RWMutex
+	clients     map[*Client]bool
+	metricCache map[string][]byte
+	Register    chan *Client
+	Unregister  chan *Client
+	broadcast   chan event.EventEnvelope
+	raw         chan []byte
+	done        chan struct{}
 }
 
 // NewHub creates a new WebSocket hub.
 func NewHub() *Hub {
 	return &Hub{
-		clients:    make(map[*Client]bool),
-		Register:   make(chan *Client),
-		Unregister: make(chan *Client),
-		broadcast:  make(chan event.EventEnvelope, 100),
-		raw:        make(chan []byte, 100),
-		done:       make(chan struct{}),
+		clients:     make(map[*Client]bool),
+		metricCache: make(map[string][]byte),
+		Register:    make(chan *Client),
+		Unregister:  make(chan *Client),
+		broadcast:   make(chan event.EventEnvelope, 100),
+		raw:         make(chan []byte, 100),
+		done:        make(chan struct{}),
 	}
 }
 
@@ -47,6 +77,21 @@ func (h *Hub) Run() {
 		case client := <-h.Register:
 			h.mu.Lock()
 			h.clients[client] = true
+			if client.Role == "dashboard" {
+				keys := make([]string, 0, len(h.metricCache))
+				for key := range h.metricCache {
+					keys = append(keys, key)
+				}
+				sort.Strings(keys)
+				for _, key := range keys {
+					message := append([]byte(nil), h.metricCache[key]...)
+					select {
+					case client.send <- message:
+					default:
+						slog.Warn("dashboard replay buffer full", "name", client.Name)
+					}
+				}
+			}
 			h.mu.Unlock()
 			slog.Info("websocket client connected", "name", client.Name, "role", client.Role)
 
@@ -78,7 +123,12 @@ func (h *Hub) Run() {
 			h.mu.RUnlock()
 
 		case data := <-h.raw:
-			h.mu.RLock()
+			h.mu.Lock()
+			if key, ok := metricCacheKey(data); ok {
+				h.metricCache[key] = append([]byte(nil), data...)
+			} else {
+				slog.Warn("raw Level 2 message is not cacheable")
+			}
 			for client := range h.clients {
 				if client.Role != "dashboard" {
 					continue
@@ -89,7 +139,7 @@ func (h *Hub) Run() {
 				default:
 				}
 			}
-			h.mu.RUnlock()
+			h.mu.Unlock()
 
 		case <-h.done:
 			return

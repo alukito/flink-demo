@@ -1,6 +1,7 @@
 package kafkaclient
 
 import (
+	"bytes"
 	"encoding/json"
 	"testing"
 
@@ -23,13 +24,14 @@ func TestConsumerForwardsInputAsTypedEventAndFlinkOutputAsRawJSON(t *testing.T) 
 	recorder := &recordingBroadcaster{}
 	consumer := NewConsumer("localhost:9092", recorder)
 	input, _ := json.Marshal(event.NewEvent("product.listed", "seller", "seller", map[string]any{"product_id": "p1"}))
+	raw := []byte("{\n \"metric\":\"tx_count\", \"scope\":\"window\", \"window_end\":\"2026-07-18T10:05:00Z\", \"value\":7, \"detail\":{}\n}")
 
 	require.NoError(t, consumer.forward("product.listed", input))
-	require.NoError(t, consumer.forward("flink.window.stats", []byte(`{"metric":"tx_count","scope":"window","window_end":"2026-07-18T10:05:00Z","value":7,"detail":{}}`)))
+	require.NoError(t, consumer.forward("flink.window.stats", raw))
 
 	assert.Len(t, recorder.events, 1)
 	assert.Len(t, recorder.raw, 1)
-	assert.JSONEq(t, `{"metric":"tx_count","scope":"window","window_end":"2026-07-18T10:05:00Z","value":7,"detail":{}}`, string(recorder.raw[0]))
+	assert.True(t, bytes.Equal(raw, recorder.raw[0]))
 }
 
 func TestConsumerRejectsMalformedJSON(t *testing.T) {
