@@ -2,6 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { useEvents, isWindowStat, type DashboardMessage, type EventEnvelope, type MetricName, type WindowStat } from '../context/EventContext';
 import { createSession } from '../api/client';
+import {
+  jakartaDateKey,
+  jakartaDayForWindowEnd,
+  millisecondsUntilNextJakartaMidnight,
+} from '../lib/jakartaDay';
 
 const METRICS: Array<{ name: MetricName; label: string; window: boolean; daily: boolean; rupiah?: boolean }> = [
   { name: 'listings_count', label: 'Listings', window: true, daily: false },
@@ -33,6 +38,7 @@ export default function Dashboard() {
   const { events, addEvent, clearEvents } = useEvents();
   const [dashToken, setDashToken] = useState<string | null>(() => localStorage.getItem('dash_token'));
   const [stats, setStats] = useState<WindowStat[]>([]);
+  const [jakartaDay, setJakartaDay] = useState(() => jakartaDateKey(new Date()));
   const onMessage = useCallback((message: DashboardMessage) => {
     if (!isWindowStat(message)) { addEvent(message); return; }
     setStats((previous) => {
@@ -51,16 +57,32 @@ export default function Dashboard() {
     createSession(`dashboard-${Math.random().toString(36).slice(2, 8)}`, 'dashboard').then((response) => { localStorage.setItem('dash_token', response.token); setDashToken(response.token); }).catch((error) => console.error('[dashboard] failed to create session', error));
   }, [dashToken]);
 
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    const scheduleMidnightRefresh = () => {
+      timer = setTimeout(() => {
+        setJakartaDay(jakartaDateKey(new Date()));
+        scheduleMidnightRefresh();
+      }, millisecondsUntilNextJakartaMidnight(new Date()) + 50);
+    };
+    scheduleMidnightRefresh();
+    return () => clearTimeout(timer);
+  }, []);
+
   const grouped = useMemo(() => Object.fromEntries(METRICS.map(({ name }) => [name, stats.filter((item) => item.metric === name)])) as Record<MetricName, WindowStat[]>, [stats]);
 
   return <main className="dashboard">
     <header className="dashboard-header"><h1>Stream Processing Dashboard</h1><div><span className={connected ? 'connection connected' : 'connection'}>{connected ? 'Connected' : dashToken ? 'Reconnecting…' : 'Connecting…'}</span><button onClick={() => { clearEvents(); setStats([]); }}>Clear</button></div></header>
     <section><h2>Level 1 — Live Event Feed</h2><p>Raw Kafka events, forwarded without stateful processing.</p><div className="event-feed">{events.length === 0 ? <div className="empty">Waiting for events…</div> : events.map((event) => <EventRow key={event.event_id} event={event} />)}</div></section>
-    <section><h2>Level 2 — Stateful Aggregations</h2><p>Five-minute windows slide every five seconds; daily totals reset at UTC midnight.</p><div className="metric-grid">{METRICS.map((metric) => {
+    <section><h2>Level 2 — Stateful Aggregations</h2><p>Five-minute windows slide every five seconds; daily totals reset at Jakarta midnight (WIB).</p><div className="metric-grid">{METRICS.map((metric) => {
       const values = grouped[metric.name];
       const windows = values.filter((item) => item.scope === 'window');
       const latestWindow = windows[windows.length - 1];
-      const daily = values.find((item) => item.scope === 'daily');
+      const daily = values.find(
+        (item) =>
+          item.scope === 'daily' &&
+          jakartaDayForWindowEnd(item.window_end) === jakartaDay,
+      );
       const topName = metric.name === 'top_product' ? latestWindow?.detail.name : undefined;
       return <article className="metric-card" key={metric.name}><h3>{metric.label}</h3><div className="metric-values"><div><span>5 min</span><strong>{formatValue(latestWindow?.value, metric.rupiah)}</strong></div><div><span>Today</span><strong>{formatValue(daily?.value, metric.rupiah)}</strong></div></div>{topName && <p className="metric-detail">{topName}</p>}{metric.window ? <MetricChart points={windows} rupiah={metric.rupiah} /> : <div className="metric-chart"><span className="empty-chart">Daily cumulative</span></div>}</article>;
     })}</div></section>

@@ -27,6 +27,7 @@ test-flink:
 
 verify:
 	cd app && go test ./...
+	cd web && npm run test:jakarta
 	cd web && npm run lint
 	cd web && npm run build
 	mvn -f flink/pom.xml clean verify
