@@ -1,9 +1,8 @@
 package com.flinkdemo.level2.function;
 
+import com.flinkdemo.level2.DailyTime;
 import com.flinkdemo.level2.model.EventEnvelope;
 import com.flinkdemo.level2.model.WindowStat;
-import java.time.LocalDate;
-import java.time.ZoneOffset;
 import java.util.Collections;
 import org.apache.flink.api.common.state.ValueState;
 import org.apache.flink.api.common.state.ValueStateDescriptor;
@@ -19,7 +18,7 @@ public final class DailyAggregateFunction extends KeyedProcessFunction<String, E
         long increment = revenue ? event.getPayload().path("total_amount").longValue() : 1L;
         long next = total.value() + increment;
         total.update(next);
-        String windowEnd = LocalDate.parse(context.getCurrentKey()).plusDays(1).atStartOfDay().toInstant(ZoneOffset.UTC).toString();
+        String windowEnd = DailyTime.windowEnd(context.getCurrentKey());
         out.collect(new WindowStat(metric, "daily", windowEnd, next, Collections.emptyMap()));
     }
 }

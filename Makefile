@@ -1,4 +1,4 @@
-.PHONY: dev-web dev-app build build-web test docker-up docker-down clean
+.PHONY: dev-web dev-app build build-web test docker-up docker-down clean build-flink test-flink verify
 
 # Run Vite dev server (port 5173, proxies /api to localhost:8080)
 dev-web:
@@ -15,9 +15,22 @@ build: build-web
 build-web:
 	cd web && npm run build
 
+build-flink:
+	mvn -f flink/pom.xml clean package
+
 # Run all Go tests
 test:
 	cd app && go test ./... -v
+
+test-flink:
+	mvn -f flink/pom.xml test
+
+verify:
+	cd app && go test ./...
+	cd web && npm run test:jakarta
+	cd web && npm run lint
+	cd web && npm run build
+	mvn -f flink/pom.xml clean verify
 
 # Start full stack via Docker Compose
 docker-up:

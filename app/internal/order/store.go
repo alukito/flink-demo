@@ -28,7 +28,7 @@ type OrderItem struct {
 	ProductID   string `json:"product_id"`
 	ProductName string `json:"product_name"`
 	Quantity    int    `json:"quantity"`
-	UnitPrice   int    `json:"unit_price"` // in cents
+	UnitPrice   int    `json:"unit_price"`
 }
 
 // Order represents a per-seller sub-order created at checkout.
@@ -37,7 +37,7 @@ type Order struct {
 	BuyerID         string      `json:"buyer_id"`
 	SellerID        string      `json:"seller_id"`
 	Items           []OrderItem `json:"items"`
-	TotalAmount     int         `json:"total_amount"` // in cents
+	TotalAmount     int         `json:"total_amount"`
 	ShippingAddress string      `json:"shipping_address"`
 	Status          OrderStatus `json:"status"`
 	PickedBy        string      `json:"picked_by,omitempty"`

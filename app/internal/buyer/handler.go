@@ -39,6 +39,15 @@ type addToCartRequest struct {
 	Quantity  int    `json:"quantity"`
 }
 
+func cartItemPayload(p *product.Product, quantity int) map[string]any {
+	return map[string]any{
+		"product_id":   p.ID,
+		"product_name": p.Name,
+		"seller_id":    p.SellerID,
+		"quantity":     quantity,
+	}
+}
+
 // AddToCart handles POST /api/buyer/cart/items.
 // The cart is client-side; this just produces a cart.item.added event for Flink.
 func (h *Handler) AddToCart(w http.ResponseWriter, r *http.Request) {
@@ -62,11 +71,7 @@ func (h *Handler) AddToCart(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Produce cart.item.added event (for Flink CEP patterns)
-	ev := event.NewEvent("cart.item.added", claims.Name, "buyer", map[string]any{
-		"product_id": p.ID,
-		"seller_id":  p.SellerID,
-		"quantity":   req.Quantity,
-	})
+	ev := event.NewEvent("cart.item.added", claims.Name, "buyer", cartItemPayload(p, req.Quantity))
 	if err := h.producer.Write(r.Context(), "cart.item.added", ev); err != nil {
 		slog.Error("failed to produce cart.item.added event", "error", err)
 	}

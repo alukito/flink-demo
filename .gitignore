@@ -30,3 +30,8 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# Local isolated development worktrees
+.worktrees/
+.tools/
+.superpowers/sdd/

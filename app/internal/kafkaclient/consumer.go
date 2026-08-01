@@ -3,6 +3,7 @@ package kafkaclient
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 
 	"github.com/kuang/flink-demo/internal/event"
@@ -12,6 +13,7 @@ import (
 // Broadcaster is the interface for the WebSocket hub's broadcast method.
 type Broadcaster interface {
 	Broadcast(ev event.EventEnvelope)
+	BroadcastRaw(data []byte)
 }
 
 // Consumer reads Kafka topics and forwards events to the WebSocket hub.
@@ -34,6 +36,7 @@ func (c *Consumer) Start(ctx context.Context) error {
 		"order.confirmed",
 		"shipment.picked",
 		"shipment.delivered",
+		"flink.window.stats",
 	}
 
 	for _, topic := range topics {
@@ -64,13 +67,27 @@ func (c *Consumer) consumeTopic(ctx context.Context, topic string) {
 			continue
 		}
 
-		var ev event.EventEnvelope
-		if err := json.Unmarshal(msg.Value, &ev); err != nil {
-			slog.Error("failed to unmarshal kafka event", "topic", topic, "error", err)
-			continue
+		if err := c.forward(topic, msg.Value); err != nil {
+			slog.Error("failed to forward kafka message", "topic", topic, "error", err)
 		}
-
-		slog.Debug("kafka event consumed", "topic", topic, "event_type", ev.EventType, "event_id", ev.EventID)
-		c.broadcaster.Broadcast(ev)
 	}
+}
+
+func (c *Consumer) forward(topic string, value []byte) error {
+	if !json.Valid(value) {
+		return fmt.Errorf("invalid JSON on %s", topic)
+	}
+	if topic == "flink.window.stats" {
+		c.broadcaster.BroadcastRaw(value)
+		slog.Debug("flink result consumed", "topic", topic)
+		return nil
+	}
+
+	var ev event.EventEnvelope
+	if err := json.Unmarshal(value, &ev); err != nil {
+		return fmt.Errorf("decode event on %s: %w", topic, err)
+	}
+	c.broadcaster.Broadcast(ev)
+	slog.Debug("kafka event consumed", "topic", topic, "event_type", ev.EventType, "event_id", ev.EventID)
+	return nil
 }

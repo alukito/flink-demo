@@ -33,6 +33,15 @@ func claimsContext(name, role string) context.Context {
 	return context.WithValue(context.Background(), auth.ClaimsKey, claims)
 }
 
+func TestCartItemPayloadIncludesProductIdentity(t *testing.T) {
+	p := &product.Product{ID: "p1", Name: "Widget", SellerID: "seller1"}
+	payload := cartItemPayload(p, 2)
+	assert.Equal(t, "p1", payload["product_id"])
+	assert.Equal(t, "Widget", payload["product_name"])
+	assert.Equal(t, "seller1", payload["seller_id"])
+	assert.Equal(t, 2, payload["quantity"])
+}
+
 func TestListProducts(t *testing.T) {
 	h, prodStore, _ := newTestHandler(t)
 	prodStore.Add(product.Product{ID: "p1", Name: "A", Price: 100, SellerID: "s1", ListedAt: time.Now()})
@@ -133,7 +142,7 @@ func TestCheckoutMultiSellerSplit(t *testing.T) {
 	}
 	require.NotNil(t, s1Order)
 	require.NotNil(t, s2Order)
-	assert.Equal(t, 100, s1Order.TotalAmount) // 100 * 1
+	assert.Equal(t, 100, s1Order.TotalAmount) // first seller's one-item order
 	assert.Equal(t, 600, s2Order.TotalAmount) // 200 * 3
 }
 
