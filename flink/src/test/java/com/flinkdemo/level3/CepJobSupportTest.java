@@ -1,10 +1,12 @@
 package com.flinkdemo.level3;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.flinkdemo.level2.model.EventEnvelope;
+import java.util.List;
+import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.util.CloseableIterator;
 import org.junit.jupiter.api.Test;
 
 class CepJobSupportTest {
@@ -16,8 +18,15 @@ class CepJobSupportTest {
     }
 
     @Test
-    void rejectsInvalidEventTimeTimestamps() throws Exception {
-        assertThrows(IllegalArgumentException.class, () -> CepJobSupport.eventTimestamp(event("not-a-timestamp")));
+    void dropsInvalidEventTimeTimestampsWhilePreservingValidEvents() throws Exception {
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.setParallelism(1);
+
+        try (CloseableIterator<EventEnvelope> iterator = CepJobSupport.eventTime(
+            env.fromCollection(List.of(event("not-a-timestamp"), event("2026-08-01T10:00:00Z"))))
+            .executeAndCollect(1)) {
+            assertEquals("2026-08-01T10:00:00Z", iterator.next().getTimestamp());
+        }
     }
 
     private EventEnvelope event(String timestamp) throws Exception {

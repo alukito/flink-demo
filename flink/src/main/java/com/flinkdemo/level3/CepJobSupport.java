@@ -33,11 +33,8 @@ public final class CepJobSupport {
 
     public static SingleOutputStreamOperator<EventEnvelope> eventTime(DataStream<EventEnvelope> stream) {
         return stream
-            .map(event -> {
-                eventTimestamp(event);
-                return event;
-            })
-            .name("validate-event-timestamp")
+            .filter(CepJobSupport::hasValidEventTimestamp)
+            .name("drop-invalid-event-timestamp")
             .assignTimestampsAndWatermarks(
                 WatermarkStrategy.<EventEnvelope>forBoundedOutOfOrderness(MAX_OUT_OF_ORDERNESS)
                     .withTimestampAssigner((event, previousTimestamp) -> eventTimestamp(event)));
@@ -59,6 +56,15 @@ public final class CepJobSupport {
             return Instant.parse(event.getTimestamp()).toEpochMilli();
         } catch (DateTimeParseException error) {
             throw new IllegalArgumentException("invalid event timestamp: " + event.getTimestamp(), error);
+        }
+    }
+
+    private static boolean hasValidEventTimestamp(EventEnvelope event) {
+        try {
+            eventTimestamp(event);
+            return true;
+        } catch (IllegalArgumentException ignored) {
+            return false;
         }
     }
 }

@@ -4,9 +4,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.flinkdemo.level2.model.EventEnvelope;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.util.CloseableIterator;
 import org.junit.jupiter.api.Test;
 
 class EventDeduplicatorTest {
@@ -20,13 +21,15 @@ class EventDeduplicatorTest {
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         env.setParallelism(1);
 
-        List<String> eventIds = env.fromCollection(List.of(first, duplicate, second))
+        List<String> eventIds = new ArrayList<>();
+        try (CloseableIterator<EventEnvelope> iterator = env.fromCollection(List.of(first, duplicate, second))
             .keyBy(EventEnvelope::getEventId)
             .process(new EventDeduplicator())
-            .executeAndCollect(2)
-            .stream()
-            .map(EventEnvelope::getEventId)
-            .collect(Collectors.toList());
+            .executeAndCollect(2)) {
+            while (iterator.hasNext()) {
+                eventIds.add(iterator.next().getEventId());
+            }
+        }
 
         assertEquals(List.of("event-1", "event-2"), eventIds);
     }
