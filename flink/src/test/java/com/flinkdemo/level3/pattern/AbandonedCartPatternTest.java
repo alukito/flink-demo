@@ -5,9 +5,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.flinkdemo.level2.model.EventEnvelope;
 import com.flinkdemo.level3.model.CepAlert;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.util.CloseableIterator;
 import org.junit.jupiter.api.Test;
 
 class AbandonedCartPatternTest {
@@ -36,6 +38,15 @@ class AbandonedCartPatternTest {
     }
 
     @Test
+    void doesNotEmitWhenCheckoutArrivesAtTheTwoMinuteBoundary() throws Exception {
+        List<CepAlert> alerts = run(List.of(
+            event("added-1", "cart.item.added", "cart-1", "2026-08-01T10:00:00Z"),
+            event("checkout-1", "cart.checkout", "cart-1", "2026-08-01T10:02:00Z")));
+
+        assertEquals(List.of(), alerts);
+    }
+
+    @Test
     void ignoresRepeatedInputEventIdsBeforeMatching() throws Exception {
         List<CepAlert> alerts = run(List.of(
             event("added-1", "cart.item.added", "cart-1", "2026-08-01T10:00:00Z"),
@@ -49,8 +60,16 @@ class AbandonedCartPatternTest {
     private List<CepAlert> run(List<EventEnvelope> events) {
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         env.setParallelism(1);
-        return AbandonedCartPattern.build(env.fromCollection(events)).executeAndCollect(10).stream()
-            .collect(Collectors.toList());
+        List<CepAlert> alerts = new ArrayList<>();
+        try (CloseableIterator<CepAlert> iterator = AbandonedCartPattern.build(env.fromCollection(events))
+            .executeAndCollect()) {
+            while (iterator.hasNext()) {
+                alerts.add(iterator.next());
+            }
+        } catch (Exception error) {
+            throw new RuntimeException(error);
+        }
+        return alerts;
     }
 
     private EventEnvelope event(String eventId, String eventType, String cartId, String timestamp) throws Exception {

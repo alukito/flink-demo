@@ -18,6 +18,7 @@ import org.apache.kafka.clients.consumer.OffsetResetStrategy;
 
 public final class CepJobSupport {
     private static final Duration MAX_OUT_OF_ORDERNESS = Duration.ofSeconds(5);
+    private static final Duration SOURCE_IDLE_TIMEOUT = Duration.ofSeconds(10);
 
     private CepJobSupport() {}
 
@@ -37,6 +38,7 @@ public final class CepJobSupport {
             .name("drop-invalid-event-timestamp")
             .assignTimestampsAndWatermarks(
                 WatermarkStrategy.<EventEnvelope>forBoundedOutOfOrderness(MAX_OUT_OF_ORDERNESS)
+                    .withIdleness(SOURCE_IDLE_TIMEOUT)
                     .withTimestampAssigner((event, previousTimestamp) -> eventTimestamp(event)));
     }
 
