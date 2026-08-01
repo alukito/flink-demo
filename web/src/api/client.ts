@@ -58,12 +58,12 @@ export async function listBuyerProducts(token: string): Promise<Response> {
   return apiGet('/buyer/products', token);
 }
 
-export async function addToCart(token: string, productId: string, quantity: number): Promise<Response> {
-  return apiPost('/buyer/cart/items', token, { product_id: productId, quantity });
+export async function addToCart(token: string, cartId: string, productId: string, quantity: number): Promise<Response> {
+  return apiPost('/buyer/cart/items', token, { cart_id: cartId, product_id: productId, quantity });
 }
 
-export async function checkout(token: string, items: { product_id: string; quantity: number }[], shippingAddress: string): Promise<Response> {
-  return apiPost('/buyer/cart/checkout', token, { items, shipping_address: shippingAddress });
+export async function checkout(token: string, cartId: string, items: { product_id: string; quantity: number }[], shippingAddress: string): Promise<Response> {
+  return apiPost('/buyer/cart/checkout', token, { cart_id: cartId, items, shipping_address: shippingAddress });
 }
 
 export async function listBuyerOrders(token: string): Promise<Response> {

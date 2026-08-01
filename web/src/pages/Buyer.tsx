@@ -37,6 +37,7 @@ export default function Buyer() {
 
   const [products, setProducts] = useState<Product[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [cartId, setCartId] = useState(() => crypto.randomUUID());
   const [orders, setOrders] = useState<Order[]>([]);
   const [shippingAddress, setShippingAddress] = useState('');
   const [error, setError] = useState('');
@@ -88,7 +89,7 @@ export default function Buyer() {
       } else {
         setCart([...cart, { product, quantity: 1 }]);
       }
-      await addToCart(token, product.id, 1);
+      await addToCart(token, cartId, product.id, 1);
     } finally {
       setCartAddingId(null);
     }
@@ -103,12 +104,13 @@ export default function Buyer() {
         product_id: item.product.id,
         quantity: item.quantity,
       }));
-      const resp = await checkout(token, items, shippingAddress);
+      const resp = await checkout(token, cartId, items, shippingAddress);
       if (!resp.ok) {
         setError(await resp.text());
         return;
       }
       setCart([]);
+      setCartId(crypto.randomUUID());
       setShippingAddress('');
       setShowCheckout(false);
       loadOrders();

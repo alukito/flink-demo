@@ -1,6 +1,7 @@
 package buyer
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -10,7 +11,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/kuang/flink-demo/internal/auth"
 	"github.com/kuang/flink-demo/internal/event"
-	"github.com/kuang/flink-demo/internal/kafkaclient"
 	"github.com/kuang/flink-demo/internal/order"
 	"github.com/kuang/flink-demo/internal/product"
 )
@@ -19,11 +19,15 @@ import (
 type Handler struct {
 	products *product.Store
 	orders   *order.Store
-	producer *kafkaclient.Producer
+	producer eventProducer
+}
+
+type eventProducer interface {
+	Write(context.Context, string, event.EventEnvelope) error
 }
 
 // NewHandler creates a buyer handler with the given stores and producer.
-func NewHandler(products *product.Store, orders *order.Store, producer *kafkaclient.Producer) *Handler {
+func NewHandler(products *product.Store, orders *order.Store, producer eventProducer) *Handler {
 	return &Handler{products: products, orders: orders, producer: producer}
 }
 
@@ -35,12 +39,14 @@ func (h *Handler) ListProducts(w http.ResponseWriter, r *http.Request) {
 }
 
 type addToCartRequest struct {
+	CartID    string `json:"cart_id"`
 	ProductID string `json:"product_id"`
 	Quantity  int    `json:"quantity"`
 }
 
-func cartItemPayload(p *product.Product, quantity int) map[string]any {
+func cartItemPayload(cartID string, p *product.Product, quantity int) map[string]any {
 	return map[string]any{
+		"cart_id":      cartID,
 		"product_id":   p.ID,
 		"product_name": p.Name,
 		"seller_id":    p.SellerID,
@@ -59,6 +65,11 @@ func (h *Handler) AddToCart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if req.CartID == "" {
+		http.Error(w, "cart_id is required", http.StatusBadRequest)
+		return
+	}
+
 	if req.ProductID == "" || req.Quantity <= 0 {
 		http.Error(w, "product_id and positive quantity are required", http.StatusBadRequest)
 		return
@@ -71,7 +82,7 @@ func (h *Handler) AddToCart(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Produce cart.item.added event (for Flink CEP patterns)
-	ev := event.NewEvent("cart.item.added", claims.Name, "buyer", cartItemPayload(p, req.Quantity))
+	ev := event.NewEvent("cart.item.added", claims.Name, "buyer", cartItemPayload(req.CartID, p, req.Quantity))
 	if err := h.producer.Write(r.Context(), "cart.item.added", ev); err != nil {
 		slog.Error("failed to produce cart.item.added event", "error", err)
 	}
@@ -89,6 +100,7 @@ type checkoutItem struct {
 }
 
 type checkoutRequest struct {
+	CartID          string         `json:"cart_id"`
 	Items           []checkoutItem `json:"items"`
 	ShippingAddress string         `json:"shipping_address"`
 }
@@ -112,6 +124,11 @@ func (h *Handler) Checkout(w http.ResponseWriter, r *http.Request) {
 	var req checkoutRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if req.CartID == "" {
+		http.Error(w, "cart_id is required", http.StatusBadRequest)
 		return
 	}
 
@@ -195,6 +212,7 @@ func (h *Handler) Checkout(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		ev := event.NewEvent("cart.checkout", claims.Name, "buyer", map[string]any{
+			"cart_id":          req.CartID,
 			"order_id":         orderID,
 			"seller_id":        sellerID,
 			"items":            itemsPayload,
