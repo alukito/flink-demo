@@ -17,6 +17,7 @@ Phase 4 extends the existing Phase 3 Level 2 stateful metrics demo. It demonstra
 - Emit raw alert records from CEP. Go forwards and lightly caches them; React derives display counts.
 - Retain only the last eight hours of alert history in memory. No persistent alert store is added.
 - Keep the existing no-third-party-chart-dependency constraint. Existing native hover behavior for chart points remains required.
+- Keep one TaskManager for the demo, increasing it from eight to twelve task slots and sizing process memory for twelve parallelism-one jobs.
 
 ## Pattern definitions
 
@@ -71,7 +72,7 @@ Each job has the same high-level pipeline:
 
 Patterns that correlate multiple topics must visibly use a unioned stream in the implementation and tests. Single-topic patterns still use CEP so the phase demonstrates a consistent pattern API across all five jobs.
 
-The jobs remain independently submitted so each pattern can be inspected, restarted, and demonstrated separately. The existing session-cluster deployment model is retained; Phase 4 adds the five CEP submissions without changing Level 1 or Level 2 behavior.
+The jobs remain independently submitted so each pattern can be inspected, restarted, and demonstrated separately. The existing session-cluster deployment model is retained; Phase 4 adds the five CEP submissions without changing Level 1 or Level 2 behavior. The single TaskManager is raised to twelve slots so all seven Level 2 and five Level 3 jobs can run concurrently.
 
 ## Go and dashboard flow
 
