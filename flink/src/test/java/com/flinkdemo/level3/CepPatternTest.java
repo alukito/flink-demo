@@ -30,4 +30,13 @@ class CepPatternTest {
         assertEquals(List.of("cart.checkout", "shipment.delivered"), CepPattern.DELIVERY_COMPLETED.sourceTopics());
         assertEquals("flink-level3-order_surge", CepPattern.ORDER_SURGE.consumerGroup());
     }
+
+    @Test
+    void givesEveryPatternItsOwnLevel3JobName() {
+        assertEquals("level3-abandoned_cart", CepPattern.ABANDONED_CART.jobName());
+        assertEquals("level3-trending_product", CepPattern.TRENDING_PRODUCT.jobName());
+        assertEquals("level3-slow_delivery", CepPattern.SLOW_DELIVERY.jobName());
+        assertEquals("level3-order_surge", CepPattern.ORDER_SURGE.jobName());
+        assertEquals("level3-delivery_completed", CepPattern.DELIVERY_COMPLETED.jobName());
+    }
 }

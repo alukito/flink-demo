@@ -20,6 +20,7 @@ public enum CepPattern {
     public String pattern() { return pattern; }
     public List<String> sourceTopics() { return sourceTopics; }
     public String consumerGroup() { return "flink-level3-" + pattern; }
+    public String jobName() { return "level3-" + pattern; }
 
     public static CepPattern fromName(String name) {
         for (CepPattern value : values()) {
