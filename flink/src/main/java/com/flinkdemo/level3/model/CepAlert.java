@@ -16,11 +16,11 @@ public final class CepAlert implements Serializable {
         this.alertId = alertId;
         this.pattern = pattern;
         this.detectedAt = detectedAt;
-        this.detail = Collections.unmodifiableMap(new LinkedHashMap<>(detail));
+        this.detail = new LinkedHashMap<>(detail);
     }
 
     public String getAlertId() { return alertId; }
     public String getPattern() { return pattern; }
     public String getDetectedAt() { return detectedAt; }
-    public Map<String, Object> getDetail() { return detail; }
+    public Map<String, Object> getDetail() { return Collections.unmodifiableMap(detail); }
 }

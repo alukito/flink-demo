@@ -6,7 +6,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.flinkdemo.level2.model.EventEnvelope;
 import java.util.List;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.util.CloseableIterator;
 import org.junit.jupiter.api.Test;
 
 class CepJobSupportTest {
@@ -22,11 +21,11 @@ class CepJobSupportTest {
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         env.setParallelism(1);
 
-        try (CloseableIterator<EventEnvelope> iterator = CepJobSupport.eventTime(
+        List<EventEnvelope> collected = CepJobSupport.eventTime(
             env.fromCollection(List.of(event("not-a-timestamp"), event("2026-08-01T10:00:00Z"))))
-            .executeAndCollect(1)) {
-            assertEquals("2026-08-01T10:00:00Z", iterator.next().getTimestamp());
-        }
+            .executeAndCollect(1);
+
+        assertEquals("2026-08-01T10:00:00Z", collected.get(0).getTimestamp());
     }
 
     private EventEnvelope event(String timestamp) throws Exception {

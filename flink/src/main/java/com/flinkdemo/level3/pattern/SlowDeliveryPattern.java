@@ -23,6 +23,7 @@ import org.apache.flink.util.OutputTag;
 /** Detects orders that remain undelivered for one event-time minute after pickup. */
 public final class SlowDeliveryPattern {
     private static final String ALERT_PATTERN = "slow_delivery";
+    private static final long SLOW_AFTER_MILLIS = Time.seconds(60).toMilliseconds();
 
     private SlowDeliveryPattern() {}
 
@@ -51,7 +52,7 @@ public final class SlowDeliveryPattern {
                     return "shipment.delivered".equals(event.getEventType());
                 }
             })
-            .within(Time.seconds(60));
+            .within(Time.milliseconds(SLOW_AFTER_MILLIS + 1));
 
         PatternStream<EventEnvelope> matches = CEP.pattern(byOrder, pattern);
         OutputTag<CepAlert> timeoutTag = new OutputTag<CepAlert>("slow-delivery-timeouts") {};
@@ -60,18 +61,19 @@ public final class SlowDeliveryPattern {
             new PatternTimeoutFunction<EventEnvelope, CepAlert>() {
                 @Override
                 public CepAlert timeout(Map<String, List<EventEnvelope>> match, long timeoutTimestamp) {
-                    return alert(match, timeoutTimestamp);
+                    EventEnvelope picked = pickedEvent(match);
+                    return alert(match, CepJobSupport.eventTimestamp(picked) + SLOW_AFTER_MILLIS);
                 }
             },
             new PatternSelectFunction<EventEnvelope, CepAlert>() {
                 @Override
                 public CepAlert select(Map<String, List<EventEnvelope>> match) {
                     EventEnvelope picked = pickedEvent(match);
-                    return alert(match, CepJobSupport.eventTimestamp(picked) + Time.seconds(60).toMilliseconds());
+                    return alert(match, CepJobSupport.eventTimestamp(picked) + SLOW_AFTER_MILLIS);
                 }
             });
 
-        return completed.getSideOutput(timeoutTag)
+        return completed.union(completed.getSideOutput(timeoutTag))
             .keyBy(CepAlert::getAlertId)
             .process(new AlertDeduplicator("slow-delivery-alert-emitted"));
     }

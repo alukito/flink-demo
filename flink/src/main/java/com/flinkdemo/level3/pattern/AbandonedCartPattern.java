@@ -23,6 +23,7 @@ import org.apache.flink.util.OutputTag;
 /** Detects cart episodes that do not complete checkout within two event-time minutes. */
 public final class AbandonedCartPattern {
     private static final String ALERT_PATTERN = "abandoned_cart";
+    private static final long ABANDONED_AFTER_MILLIS = Time.minutes(2).toMilliseconds();
 
     private AbandonedCartPattern() {}
 
@@ -51,7 +52,7 @@ public final class AbandonedCartPattern {
                     return "cart.checkout".equals(event.getEventType());
                 }
             })
-            .within(Time.minutes(2));
+            .within(Time.milliseconds(ABANDONED_AFTER_MILLIS + 1));
 
         PatternStream<EventEnvelope> matches = CEP.pattern(byCart, pattern);
         OutputTag<CepAlert> timeoutTag = new OutputTag<CepAlert>("abandoned-cart-timeouts") {};
@@ -60,18 +61,19 @@ public final class AbandonedCartPattern {
             new PatternTimeoutFunction<EventEnvelope, CepAlert>() {
                 @Override
                 public CepAlert timeout(Map<String, List<EventEnvelope>> match, long timeoutTimestamp) {
-                    return alert(match, timeoutTimestamp);
+                    EventEnvelope added = addedEvent(match);
+                    return alert(match, CepJobSupport.eventTimestamp(added) + ABANDONED_AFTER_MILLIS);
                 }
             },
             new PatternSelectFunction<EventEnvelope, CepAlert>() {
                 @Override
                 public CepAlert select(Map<String, List<EventEnvelope>> match) {
                     EventEnvelope added = addedEvent(match);
-                    return alert(match, CepJobSupport.eventTimestamp(added) + Time.minutes(2).toMilliseconds());
+                    return alert(match, CepJobSupport.eventTimestamp(added) + ABANDONED_AFTER_MILLIS);
                 }
             });
 
-        return completed.getSideOutput(timeoutTag)
+        return completed.union(completed.getSideOutput(timeoutTag))
             .keyBy(CepAlert::getAlertId)
             .process(new AlertDeduplicator("abandoned-cart-alert-emitted"));
     }
