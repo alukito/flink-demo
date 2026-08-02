@@ -9,6 +9,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.apache.flink.api.common.state.StateTtlConfig;
 import org.apache.flink.api.common.state.ValueState;
 import org.apache.flink.api.common.state.ValueStateDescriptor;
 import org.apache.flink.api.common.typeinfo.Types;
@@ -116,8 +117,14 @@ public final class OrderSurgePattern {
 
         @Override
         public void open(org.apache.flink.configuration.Configuration parameters) {
-            emitted = getRuntimeContext().getState(
-                new ValueStateDescriptor<>("order-surge-alert-emitted", Types.BOOLEAN));
+            ValueStateDescriptor<Boolean> descriptor = new ValueStateDescriptor<>(
+                "order-surge-alert-emitted", Types.BOOLEAN);
+            descriptor.enableTimeToLive(
+                StateTtlConfig.newBuilder(org.apache.flink.api.common.time.Time.hours(8))
+                    .setUpdateType(StateTtlConfig.UpdateType.OnCreateAndWrite)
+                    .setStateVisibility(StateTtlConfig.StateVisibility.NeverReturnExpired)
+                    .build());
+            emitted = getRuntimeContext().getState(descriptor);
         }
 
         @Override
