@@ -66,9 +66,13 @@ deliver() {
 }
 
 topic_messages_since() {
-  docker compose exec -T kafka kafka-console-consumer \
+  if docker compose exec -T kafka kafka-console-consumer \
     --bootstrap-server kafka:9092 --topic "$1" --partition 0 --offset "$2" \
-    --max-messages 50 --timeout-ms 10000 2>/dev/null || true
+    --max-messages 50 --timeout-ms 10000; then
+    return 0
+  fi
+  printf 'Kafka read failed for topic %s at offset %s. See consumer output above.\n' "$1" "$2" >&2
+  return 1
 }
 
 alerts_present() {
@@ -92,10 +96,14 @@ alerts_present() {
 
 if ! ready; then
   docker compose up -d --build || fail
-  for attempt in $(seq 1 120); do
-    ready && break
+  attempt=1
+  while [ "$attempt" -le 120 ]; do
+    if ready; then
+      break
+    fi
     [ "$attempt" -eq 120 ] && fail
     sleep 2
+    attempt=$((attempt + 1))
   done
 fi
 
@@ -119,14 +127,18 @@ abandoned_cart="phase4-abandoned-cart-$suffix"
 add_item "$buyer_one" "$abandoned_cart" "$abandoned_product_id" || fail
 
 # These three additions satisfy the three-buyer trending-product pattern.
-add_item "$buyer_one" "phase4-trend-cart-one-$suffix" "$product_id" || fail
-add_item "$buyer_two" "phase4-trend-cart-two-$suffix" "$product_id" || fail
-add_item "$buyer_three" "phase4-trend-cart-three-$suffix" "$product_id" || fail
+trend_cart_one="phase4-trend-cart-one-$suffix"
+trend_cart_two="phase4-trend-cart-two-$suffix"
+trend_cart_three="phase4-trend-cart-three-$suffix"
+add_item "$buyer_one" "$trend_cart_one" "$product_id" || fail
+add_item "$buyer_two" "$trend_cart_two" "$product_id" || fail
+add_item "$buyer_three" "$trend_cart_three" "$product_id" || fail
 
-# These three checkouts satisfy the three-buyer order-surge pattern.
-completed_order=$(checkout "$buyer_one" "phase4-checkout-one-$suffix" "$product_id") || fail
-slow_order=$(checkout "$buyer_two" "phase4-checkout-two-$suffix" "$product_id") || fail
-advance_order=$(checkout "$buyer_three" "phase4-checkout-three-$suffix" "$product_id") || fail
+# Complete those trend carts so the deliberate abandoned cart is the only
+# run-scoped cart left without checkout. These checkouts also create the surge.
+completed_order=$(checkout "$buyer_one" "$trend_cart_one" "$product_id") || fail
+slow_order=$(checkout "$buyer_two" "$trend_cart_two" "$product_id") || fail
+advance_order=$(checkout "$buyer_three" "$trend_cart_three" "$product_id") || fail
 
 confirm "$seller" "$completed_order" || fail
 confirm "$seller" "$slow_order" || fail
@@ -135,17 +147,21 @@ pick "$shipper" "$completed_order" || fail
 deliver "$shipper" "$completed_order" || fail
 pick "$shipper" "$slow_order" || fail
 
-# Event-time timeouts need later source events. Advance both windows after 65 seconds.
-sleep 65
+# Event-time timeouts need later source events. Wait 75 seconds: 60 seconds
+# for slow_delivery, five seconds of bounded out-of-orderness, and a ten-second
+# scheduling/second-truncation margin before emitting the advancing pickup.
+sleep 75
 pick "$shipper" "$advance_order" || fail
 
 # Advance the two-minute cart watermark only after the abandoned cart is due.
 sleep 65
-add_item "$buyer_one" "phase4-watermark-cart-$suffix" "$abandoned_product_id" || fail
+watermark_cart="phase4-watermark-cart-$suffix"
+add_item "$buyer_one" "$watermark_cart" "$abandoned_product_id" || fail
+checkout "$buyer_one" "$watermark_cart" "$abandoned_product_id" >/dev/null || fail
 
 # CEP constructs the trend/surge IDs from the first qualifying input timestamp.
-cart_events=$(topic_messages_since cart.item.added "$cart_offset")
-checkout_events=$(topic_messages_since cart.checkout "$checkout_offset")
+cart_events=$(topic_messages_since cart.item.added "$cart_offset") || fail
+checkout_events=$(topic_messages_since cart.checkout "$checkout_offset") || fail
 trend_start=$(printf '%s\n' "$cart_events" | jq -ser --arg product "$product_id" \
   '[.[] | select(.event_type == "cart.item.added" and .payload.product_id == $product) | .timestamp] | first') || fail
 surge_start=$(printf '%s\n' "$checkout_events" | jq -ser \
@@ -156,13 +172,16 @@ esac
 trend_alert="trending_product:$product_id:$trend_start"
 surge_alert="order_surge:$surge_start"
 
-for attempt in $(seq 1 12); do
-  alerts=$(topic_messages_since "$alerts_topic" "$alerts_offset")
+attempt=1
+while [ "$attempt" -le 12 ]; do
+  alerts=$(topic_messages_since "$alerts_topic" "$alerts_offset") || fail
   if alerts_present "$alerts" "$abandoned_cart" "$trend_alert" "$surge_alert" "$slow_order" "$completed_order"; then
     printf '%s\n' 'Phase 4 smoke test passed: twelve jobs running and five CEP alert patterns observed.'
     exit 0
   fi
+  [ "$attempt" -eq 12 ] && break
   sleep 5
+  attempt=$((attempt + 1))
 done
 
 fail
