@@ -56,8 +56,8 @@ class TrendingProductPatternTest {
     void deduplicatesRepeatedInputEventIdsBeforeCountingBuyers() throws Exception {
         List<CepAlert> alerts = run(List.of(
             event("added-1", "buyer-1", "2026-08-01T10:00:00Z"),
-            event("added-1", "buyer-1", "2026-08-01T10:00:00Z"),
-            event("added-2", "buyer-2", "2026-08-01T10:00:20Z")));
+            event("added-1", "buyer-2", "2026-08-01T10:00:10Z"),
+            event("added-2", "buyer-3", "2026-08-01T10:00:20Z")));
 
         assertEquals(List.of(), alerts);
     }
