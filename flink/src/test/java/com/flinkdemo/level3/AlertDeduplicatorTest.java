@@ -10,7 +10,7 @@ class AlertDeduplicatorTest {
     void configuresOutputDeduplicationStateToExpireAfterEightHours() {
         StateTtlConfig ttl = AlertDeduplicator.stateDescriptor("test-alert-emitted").getTtlConfig();
 
-        assertEquals(8L * 60 * 60 * 1000, ttl.getTimeToLive().toMilliseconds());
+        assertEquals(8L * 60 * 60 * 1000, ttl.getTimeToLive().toMillis());
         assertEquals(StateTtlConfig.UpdateType.OnCreateAndWrite, ttl.getUpdateType());
         assertEquals(StateTtlConfig.StateVisibility.NeverReturnExpired, ttl.getStateVisibility());
     }
