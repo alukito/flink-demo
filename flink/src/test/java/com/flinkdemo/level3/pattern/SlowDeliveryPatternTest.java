@@ -38,6 +38,15 @@ class SlowDeliveryPatternTest {
     }
 
     @Test
+    void doesNotEmitWhenDeliveryArrivesAtTheOneMinuteBoundary() throws Exception {
+        List<CepAlert> alerts = run(List.of(
+            event("picked-1", "shipment.picked", "order-1", "2026-08-01T10:00:00Z"),
+            event("delivered-1", "shipment.delivered", "order-1", "2026-08-01T10:01:00Z")));
+
+        assertEquals(List.of(), alerts);
+    }
+
+    @Test
     void deliveryForAnotherOrderDoesNotCancelThePickedOrderTimeout() throws Exception {
         List<CepAlert> alerts = run(List.of(
             event("picked-1", "shipment.picked", "order-1", "2026-08-01T10:00:00Z"),
@@ -49,10 +58,10 @@ class SlowDeliveryPatternTest {
     }
 
     @Test
-    void ignoresRepeatedPickedEventIdsBeforeMatching() throws Exception {
+    void ignoresDuplicateEventIdBeforeDeliveryCanCancelPickupTimeout() throws Exception {
         List<CepAlert> alerts = run(List.of(
             event("picked-1", "shipment.picked", "order-1", "2026-08-01T10:00:00Z"),
-            event("picked-1", "shipment.picked", "order-1", "2026-08-01T10:00:00Z")));
+            event("picked-1", "shipment.delivered", "order-1", "2026-08-01T10:00:30Z")));
 
         assertEquals(List.of("slow_delivery:order-1"), alerts.stream()
             .map(CepAlert::getAlertId)
