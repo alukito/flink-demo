@@ -1,4 +1,7 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
+import type { CepAlert } from '../lib/cepAlerts';
+
+export type { CepAlert } from '../lib/cepAlerts';
 
 export interface EventEnvelope {
   event_id: string;
@@ -17,7 +20,7 @@ export interface WindowStat {
   value: number;
   detail: Record<string, string>;
 }
-export type DashboardMessage = EventEnvelope | WindowStat;
+export type DashboardMessage = EventEnvelope | WindowStat | CepAlert;
 export function isWindowStat(value: DashboardMessage): value is WindowStat {
   return 'metric' in value && 'scope' in value && 'window_end' in value;
 }

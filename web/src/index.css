@@ -55,4 +55,20 @@ input {
 .metric-chart { height: 90px; display: flex; align-items: flex-end; gap: 3px; padding-top: 10px; border-bottom: 1px solid #d1d5db; }
 .metric-bar { flex: 1; min-width: 3px; max-width: 14px; border-radius: 3px 3px 0 0; background: linear-gradient(#60a5fa, #2563eb); }
 .empty-chart { margin: auto; color: #9ca3af; font-size: 12px; }
-@media (max-width: 700px) { .event-row { grid-template-columns: 80px 1fr; } .event-row span:nth-child(n+3) { display: none; } }
+.cep-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 12px; }
+.cep-card-note { height: 20px; color: #6b7280; font-size: 12px; }
+.cep-chart { margin-top: 8px; }
+.cep-bar { background: linear-gradient(#a78bfa, #7c3aed); }
+.cep-duration-bar { background: linear-gradient(#34d399, #059669); }
+.cep-duration-card { grid-column: span 2; }
+.trending-products { min-height: 90px; display: flex; align-items: center; }
+.trending-products table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.trending-products th, .trending-products td { padding: 7px 0; border-bottom: 1px solid #e5e7eb; text-align: left; }
+.trending-products th:last-child, .trending-products td:last-child { text-align: right; }
+.trending-products td:first-child { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.surge-status { min-height: 90px; display: flex; flex-direction: column; justify-content: center; gap: 4px; color: #6b7280; }
+.surge-status strong { color: #374151; font-size: 26px; }
+.surge-status.detected strong { color: #b45309; }
+.surge-status span { font-size: 13px; }
+.surge-status small { color: #6b7280; }
+@media (max-width: 700px) { .event-row { grid-template-columns: 80px 1fr; } .event-row span:nth-child(n+3) { display: none; } .cep-duration-card { grid-column: auto; } }

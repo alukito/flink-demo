@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "test:jakarta": "node --test src/lib/jakartaDay.test.ts",
+    "test:cep": "node --test src/lib/cepAlerts.test.ts",
     "lint": "oxlint",
     "preview": "vite preview"
   },
