@@ -1,6 +1,7 @@
 package com.flinkdemo.level3.pattern;
 
 import com.flinkdemo.level2.model.EventEnvelope;
+import com.flinkdemo.level3.AlertDeduplicator;
 import com.flinkdemo.level3.CepJobSupport;
 import com.flinkdemo.level3.EventDeduplicator;
 import com.flinkdemo.level3.model.CepAlert;
@@ -8,10 +9,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
-import org.apache.flink.api.common.state.StateTtlConfig;
-import org.apache.flink.api.common.state.ValueState;
-import org.apache.flink.api.common.state.ValueStateDescriptor;
-import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.cep.CEP;
 import org.apache.flink.cep.PatternSelectFunction;
 import org.apache.flink.cep.PatternStream;
@@ -20,10 +17,14 @@ import org.apache.flink.cep.pattern.conditions.IterativeCondition;
 import org.apache.flink.cep.pattern.conditions.SimpleCondition;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.KeyedStream;
-import org.apache.flink.streaming.api.functions.KeyedProcessFunction;
-import org.apache.flink.util.Collector;
+import org.apache.flink.streaming.api.windowing.time.Time;
 
-/** Measures the event-time elapsed duration from checkout to delivery for an order. */
+/**
+ * Measures event-time checkout-to-delivery duration for an order.
+ *
+ * <p>Unmatched checkouts are retained for eight hours to match the approved demo/cache horizon.
+ * That operational cleanup horizon is not a slow-delivery threshold and emits no timeout alert.
+ */
 public final class DeliveryCompletedPattern {
     private static final String ALERT_PATTERN = "delivery_completed";
 
@@ -48,7 +49,8 @@ public final class DeliveryCompletedPattern {
                 }
             })
             .followedBy("delivered")
-            .where(new DeliveryAfterCheckoutCondition());
+            .where(new DeliveryAfterCheckoutCondition())
+            .within(Time.hours(8));
 
         PatternStream<EventEnvelope> matches = CEP.pattern(byOrder, pattern);
         return matches
@@ -59,7 +61,7 @@ public final class DeliveryCompletedPattern {
                 }
             })
             .keyBy(CepAlert::getAlertId)
-            .process(new FirstAlertOnly());
+            .process(new AlertDeduplicator("checkout-delivery-alert-emitted"));
     }
 
     private static boolean isCheckout(EventEnvelope event) {
@@ -110,30 +112,6 @@ public final class DeliveryCompletedPattern {
                 return CepJobSupport.eventTimestamp(delivery) >= CepJobSupport.eventTimestamp(checkout);
             }
             return false;
-        }
-    }
-
-    private static final class FirstAlertOnly extends KeyedProcessFunction<String, CepAlert, CepAlert> {
-        private transient ValueState<Boolean> emitted;
-
-        @Override
-        public void open(org.apache.flink.configuration.Configuration parameters) {
-            ValueStateDescriptor<Boolean> descriptor = new ValueStateDescriptor<>(
-                "checkout-delivery-alert-emitted", Types.BOOLEAN);
-            descriptor.enableTimeToLive(
-                StateTtlConfig.newBuilder(org.apache.flink.api.common.time.Time.hours(8))
-                    .setUpdateType(StateTtlConfig.UpdateType.OnCreateAndWrite)
-                    .setStateVisibility(StateTtlConfig.StateVisibility.NeverReturnExpired)
-                    .build());
-            emitted = getRuntimeContext().getState(descriptor);
-        }
-
-        @Override
-        public void processElement(CepAlert alert, Context context, Collector<CepAlert> out) throws Exception {
-            if (!Boolean.TRUE.equals(emitted.value())) {
-                emitted.update(true);
-                out.collect(alert);
-            }
         }
     }
 }

@@ -17,8 +17,17 @@ running_jobs() {
     jq '[.jobs[] | select(.state == "RUNNING")] | length'
 }
 
+taskmanager_capacity_ready() {
+  curl --fail --silent http://localhost:8081/taskmanagers |
+    jq -e '(.taskmanagers | length) == 1 and .taskmanagers[0].slotsNumber == 12' >/dev/null
+}
+
+runtime_capacity_ready() {
+  [ "$(running_jobs)" -eq 12 ] && taskmanager_capacity_ready
+}
+
 ready() {
-  curl --fail --silent "$base/api/health" >/dev/null && [ "$(running_jobs)" -eq 12 ]
+  curl --fail --silent "$base/api/health" >/dev/null && runtime_capacity_ready
 }
 
 topic_offset() {
@@ -175,7 +184,8 @@ surge_alert="order_surge:$surge_start"
 attempt=1
 while [ "$attempt" -le 12 ]; do
   alerts=$(topic_messages_since "$alerts_topic" "$alerts_offset") || fail
-  if alerts_present "$alerts" "$abandoned_cart" "$trend_alert" "$surge_alert" "$slow_order" "$completed_order"; then
+  if alerts_present "$alerts" "$abandoned_cart" "$trend_alert" "$surge_alert" "$slow_order" "$completed_order" &&
+    runtime_capacity_ready; then
     printf '%s\n' 'Phase 4 smoke test passed: twelve jobs running and five CEP alert patterns observed.'
     exit 0
   fi

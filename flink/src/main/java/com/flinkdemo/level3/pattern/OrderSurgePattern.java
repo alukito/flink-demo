@@ -1,6 +1,7 @@
 package com.flinkdemo.level3.pattern;
 
 import com.flinkdemo.level2.model.EventEnvelope;
+import com.flinkdemo.level3.AlertDeduplicator;
 import com.flinkdemo.level3.CepJobSupport;
 import com.flinkdemo.level3.EventDeduplicator;
 import com.flinkdemo.level3.model.CepAlert;
@@ -9,10 +10,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import org.apache.flink.api.common.state.StateTtlConfig;
-import org.apache.flink.api.common.state.ValueState;
-import org.apache.flink.api.common.state.ValueStateDescriptor;
-import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.cep.CEP;
 import org.apache.flink.cep.PatternSelectFunction;
 import org.apache.flink.cep.PatternStream;
@@ -21,9 +18,7 @@ import org.apache.flink.cep.pattern.conditions.IterativeCondition;
 import org.apache.flink.cep.pattern.conditions.SimpleCondition;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.KeyedStream;
-import org.apache.flink.streaming.api.functions.KeyedProcessFunction;
 import org.apache.flink.streaming.api.windowing.time.Time;
-import org.apache.flink.util.Collector;
 
 /** Detects three distinct buyers checking out in one event-time thirty-second window. */
 public final class OrderSurgePattern {
@@ -62,7 +57,7 @@ public final class OrderSurgePattern {
                 }
             })
             .keyBy(CepAlert::getAlertId)
-            .process(new FirstAlertOnly());
+            .process(new AlertDeduplicator("order-surge-alert-emitted"));
     }
 
     private static boolean isCheckout(EventEnvelope event) {
@@ -109,30 +104,6 @@ public final class OrderSurgePattern {
                 }
             }
             return !previousActors.contains(actorId(event));
-        }
-    }
-
-    private static final class FirstAlertOnly extends KeyedProcessFunction<String, CepAlert, CepAlert> {
-        private transient ValueState<Boolean> emitted;
-
-        @Override
-        public void open(org.apache.flink.configuration.Configuration parameters) {
-            ValueStateDescriptor<Boolean> descriptor = new ValueStateDescriptor<>(
-                "order-surge-alert-emitted", Types.BOOLEAN);
-            descriptor.enableTimeToLive(
-                StateTtlConfig.newBuilder(org.apache.flink.api.common.time.Time.hours(8))
-                    .setUpdateType(StateTtlConfig.UpdateType.OnCreateAndWrite)
-                    .setStateVisibility(StateTtlConfig.StateVisibility.NeverReturnExpired)
-                    .build());
-            emitted = getRuntimeContext().getState(descriptor);
-        }
-
-        @Override
-        public void processElement(CepAlert alert, Context context, Collector<CepAlert> out) throws Exception {
-            if (!Boolean.TRUE.equals(emitted.value())) {
-                emitted.update(true);
-                out.collect(alert);
-            }
         }
     }
 }

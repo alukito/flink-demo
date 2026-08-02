@@ -1,6 +1,7 @@
 package com.flinkdemo.level3.pattern;
 
 import com.flinkdemo.level2.model.EventEnvelope;
+import com.flinkdemo.level3.AlertDeduplicator;
 import com.flinkdemo.level3.CepJobSupport;
 import com.flinkdemo.level3.EventDeduplicator;
 import com.flinkdemo.level3.model.CepAlert;
@@ -9,9 +10,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import org.apache.flink.api.common.state.ValueState;
-import org.apache.flink.api.common.state.ValueStateDescriptor;
-import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.cep.CEP;
 import org.apache.flink.cep.PatternSelectFunction;
 import org.apache.flink.cep.PatternStream;
@@ -20,9 +18,7 @@ import org.apache.flink.cep.pattern.conditions.IterativeCondition;
 import org.apache.flink.cep.pattern.conditions.SimpleCondition;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.KeyedStream;
-import org.apache.flink.streaming.api.functions.KeyedProcessFunction;
 import org.apache.flink.streaming.api.windowing.time.Time;
-import org.apache.flink.util.Collector;
 
 /** Detects a product being added by three distinct buyers in one event-time minute. */
 public final class TrendingProductPattern {
@@ -60,7 +56,7 @@ public final class TrendingProductPattern {
                 }
             })
             .keyBy(CepAlert::getAlertId)
-            .process(new FirstAlertOnly());
+            .process(new AlertDeduplicator("trending-product-alert-emitted"));
     }
 
     private static boolean isProductAdded(EventEnvelope event) {
@@ -120,23 +116,6 @@ public final class TrendingProductPattern {
                 }
             }
             return !previousActors.contains(actorId(event));
-        }
-    }
-
-    private static final class FirstAlertOnly extends KeyedProcessFunction<String, CepAlert, CepAlert> {
-        private transient ValueState<Boolean> emitted;
-
-        @Override
-        public void open(org.apache.flink.configuration.Configuration parameters) {
-            emitted = getRuntimeContext().getState(new ValueStateDescriptor<>("trending-product-alert-emitted", Types.BOOLEAN));
-        }
-
-        @Override
-        public void processElement(CepAlert alert, Context context, Collector<CepAlert> out) throws Exception {
-            if (!Boolean.TRUE.equals(emitted.value())) {
-                emitted.update(true);
-                out.collect(alert);
-            }
         }
     }
 }

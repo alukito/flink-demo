@@ -32,6 +32,23 @@ class DeliveryCompletedPatternTest {
     }
 
     @Test
+    void emitsNumericElapsedSecondsForDeliveryWithinTheOperationalRetentionHorizon() throws Exception {
+        List<CepAlert> alerts = run(List.of(
+            event("checkout-1", "cart.checkout", "order-1", "2026-08-01T10:00:00Z"),
+            event("delivery-1", "shipment.delivered", "order-1", "2026-08-01T17:59:59Z")));
+
+        assertEquals(1, alerts.size());
+        assertEquals(28_799L, alerts.get(0).getDetail().get("elapsed_seconds"));
+    }
+
+    @Test
+    void discardsCheckoutAtTheOperationalRetentionHorizonWithoutEmittingATimeoutAlert() throws Exception {
+        assertEquals(List.of(), run(List.of(
+            event("checkout-1", "cart.checkout", "order-1", "2026-08-01T10:00:00Z"),
+            event("delivery-1", "shipment.delivered", "order-1", "2026-08-01T18:00:00Z"))));
+    }
+
+    @Test
     void ignoresDeliveryWithoutCheckout() throws Exception {
         assertEquals(List.of(), run(List.of(
             event("delivery-1", "shipment.delivered", "order-1", "2026-08-01T10:00:47Z"))));
