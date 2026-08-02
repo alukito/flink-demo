@@ -24,21 +24,21 @@ import org.apache.flink.streaming.api.functions.KeyedProcessFunction;
 import org.apache.flink.util.Collector;
 
 /** Measures the event-time elapsed duration from checkout to delivery for an order. */
-public final class CheckoutDeliveryPattern {
+public final class DeliveryCompletedPattern {
     private static final String ALERT_PATTERN = "delivery_completed";
 
-    private CheckoutDeliveryPattern() {}
+    private DeliveryCompletedPattern() {}
 
     public static DataStream<CepAlert> build(DataStream<EventEnvelope> input) {
         DataStream<EventEnvelope> deduplicated = CepJobSupport.eventTime(input)
             .keyBy(EventEnvelope::getEventId)
             .process(new EventDeduplicator());
         DataStream<EventEnvelope> orderEvents = deduplicated
-            .filter(CheckoutDeliveryPattern::isCheckout)
-            .union(deduplicated.filter(CheckoutDeliveryPattern::isDelivery));
+            .filter(DeliveryCompletedPattern::isCheckout)
+            .union(deduplicated.filter(DeliveryCompletedPattern::isDelivery));
         KeyedStream<EventEnvelope, String> byOrder = orderEvents
-            .filter(CheckoutDeliveryPattern::hasOrderId)
-            .keyBy(CheckoutDeliveryPattern::orderId);
+            .filter(DeliveryCompletedPattern::hasOrderId)
+            .keyBy(DeliveryCompletedPattern::orderId);
 
         Pattern<EventEnvelope, EventEnvelope> pattern = Pattern.<EventEnvelope>begin("checkout")
             .where(new SimpleCondition<EventEnvelope>() {
@@ -86,7 +86,7 @@ public final class CheckoutDeliveryPattern {
         long elapsedSeconds = Duration.between(checkoutAt, deliveredAt).getSeconds();
         String orderId = orderId(checkout);
         return new CepAlert(
-            "checkout_delivery:" + orderId + ":" + checkoutAt,
+            ALERT_PATTERN + ":" + orderId,
             ALERT_PATTERN,
             deliveredAt.toString(),
             Map.of(

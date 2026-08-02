@@ -11,7 +11,7 @@ import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.util.CloseableIterator;
 import org.junit.jupiter.api.Test;
 
-class CheckoutDeliveryPatternTest {
+class DeliveryCompletedPatternTest {
     private final ObjectMapper mapper = new ObjectMapper();
 
     @Test
@@ -22,7 +22,7 @@ class CheckoutDeliveryPatternTest {
 
         assertEquals(1, alerts.size());
         CepAlert alert = alerts.get(0);
-        assertEquals("checkout_delivery:order-1:2026-08-01T10:00:00Z", alert.getAlertId());
+        assertEquals("delivery_completed:order-1", alert.getAlertId());
         assertEquals("delivery_completed", alert.getPattern());
         assertEquals("2026-08-01T10:00:47Z", alert.getDetectedAt());
         assertEquals("order-1", alert.getDetail().get("order_id"));
@@ -62,7 +62,7 @@ class CheckoutDeliveryPatternTest {
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         env.setParallelism(1);
         List<CepAlert> alerts = new ArrayList<>();
-        try (CloseableIterator<CepAlert> iterator = CheckoutDeliveryPattern.build(env.fromCollection(events))
+        try (CloseableIterator<CepAlert> iterator = DeliveryCompletedPattern.build(env.fromCollection(events))
             .executeAndCollect()) {
             while (iterator.hasNext()) {
                 alerts.add(iterator.next());
