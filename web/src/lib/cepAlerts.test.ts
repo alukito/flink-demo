@@ -4,6 +4,7 @@ import {
   bucketAlertCounts,
   deliveryDurations,
   isCepAlert,
+  readCepAlertMessage,
   latestOrderSurge,
   retainRecentAlerts,
   trendingProductCounts,
@@ -26,7 +27,22 @@ function alert(overrides: Partial<CepAlert> = {}): CepAlert {
 test('identifies CEP alerts and rejects malformed detection times', () => {
   assert.equal(isCepAlert(alert()), true);
   assert.equal(isCepAlert(alert({ detected_at: 'not-a-time' })), false);
+  assert.equal(isCepAlert(alert({ detected_at: '2026-02-30T10:00:00Z' })), false);
+  assert.equal(isCepAlert(alert({ detected_at: '2026-08-02T10:00:00' })), false);
   assert.equal(isCepAlert({ alert_id: 'x', pattern: 'order_surge', detected_at: NOW.toISOString(), detail: [] }), false);
+});
+
+test('keeps malformed CEP-shaped dashboard messages out of the raw event path', () => {
+  const malformed = {
+    alert_id: 'order_surge:bad-time',
+    pattern: 'order_surge',
+    detected_at: '2026-02-30T10:00:00Z',
+    detail: {},
+  };
+
+  assert.equal(readCepAlertMessage(malformed), null);
+  assert.equal(readCepAlertMessage({ event_id: 'event-1', event_type: 'cart.checkout' }), undefined);
+  assert.deepEqual(readCepAlertMessage(alert()), alert());
 });
 
 test('retains an eight-hour inclusive boundary and rejects stale or future alerts', () => {

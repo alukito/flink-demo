@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useWebSocket } from '../hooks/useWebSocket';
-import { useEvents, isWindowStat, type DashboardMessage, type EventEnvelope, type MetricName, type WindowStat } from '../context/EventContext';
+import { useEvents, isEventEnvelope, isWindowStat, type DashboardMessage, type EventEnvelope, type MetricName, type WindowStat } from '../context/EventContext';
 import { createSession } from '../api/client';
 import {
   jakartaDayForWindowEnd,
@@ -10,8 +10,8 @@ import {
 import {
   bucketAlertCounts,
   deliveryDurations,
-  isCepAlert,
   latestOrderSurge,
+  readCepAlertMessage,
   retainRecentAlerts,
   trendingProductCounts,
   upsertCepAlert,
@@ -67,11 +67,13 @@ export default function Dashboard() {
   const [alerts, setAlerts] = useState<CepAlert[]>([]);
   const [jakartaDay, setJakartaDay] = useState(() => jakartaDateKey(new Date()));
   const onMessage = useCallback((message: DashboardMessage) => {
-    if (isCepAlert(message)) {
-      setAlerts((previous) => upsertCepAlert(previous, message));
+    const cepAlert = readCepAlertMessage(message);
+    if (cepAlert !== undefined) {
+      if (cepAlert) setAlerts((previous) => upsertCepAlert(previous, cepAlert));
       return;
     }
-    if (!isWindowStat(message)) { addEvent(message); return; }
+    if (isEventEnvelope(message)) { addEvent(message); return; }
+    if (!isWindowStat(message)) return;
     setStats((previous) => {
       const unique = previous.filter((item) => !(item.metric === message.metric && item.scope === message.scope && item.window_end === message.window_end));
       const next = [...unique, message];

@@ -33,6 +33,25 @@ const EIGHT_HOURS_MS = 8 * 60 * 60 * 1000;
 const TEN_MINUTES_MS = 10 * 60 * 1000;
 
 function timestamp(value: string): number | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?(Z|[+-]\d{2}:\d{2})$/.exec(value);
+  if (!match) return null;
+  const [, year, month, day, hour, minute, second, fraction = '', offset] = match;
+  const calendar = new Date(Date.UTC(
+    Number(year),
+    Number(month) - 1,
+    Number(day),
+    Number(hour),
+    Number(minute),
+    Number(second),
+    Number(`${fraction.padEnd(3, '0') || '0'}`),
+  ));
+  if (calendar.getUTCFullYear() !== Number(year)
+    || calendar.getUTCMonth() !== Number(month) - 1
+    || calendar.getUTCDate() !== Number(day)
+    || calendar.getUTCHours() !== Number(hour)
+    || calendar.getUTCMinutes() !== Number(minute)
+    || calendar.getUTCSeconds() !== Number(second)
+    || (offset !== 'Z' && (Number(offset.slice(1, 3)) > 23 || Number(offset.slice(4, 6)) > 59))) return null;
   const parsed = Date.parse(value);
   return Number.isFinite(parsed) ? parsed : null;
 }
@@ -41,13 +60,28 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-export function isCepAlert(value: unknown): value is CepAlert {
-  if (!isRecord(value)) return false;
-  return typeof value.alert_id === 'string'
+function isCepAlertEnvelope(value: unknown): value is Record<string, unknown> {
+  return isRecord(value)
+    && typeof value.alert_id === 'string'
     && typeof value.pattern === 'string'
-    && typeof value.detected_at === 'string'
+    && isRecord(value.detail);
+}
+
+export function isCepAlert(value: unknown): value is CepAlert {
+  if (!isCepAlertEnvelope(value)) return false;
+  return typeof value.detected_at === 'string'
     && timestamp(value.detected_at) !== null
     && isRecord(value.detail);
+}
+
+/**
+ * Separates a non-CEP dashboard message (`undefined`) from a CEP envelope.
+ * A malformed CEP envelope is represented by `null` so callers can discard it
+ * without accidentally treating it as a Level 1 event.
+ */
+export function readCepAlertMessage(value: unknown): CepAlert | null | undefined {
+  if (!isCepAlertEnvelope(value)) return undefined;
+  return isCepAlert(value) ? value : null;
 }
 
 function compareAlerts(left: CepAlert, right: CepAlert): number {

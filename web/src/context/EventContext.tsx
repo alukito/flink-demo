@@ -24,6 +24,14 @@ export type DashboardMessage = EventEnvelope | WindowStat | CepAlert;
 export function isWindowStat(value: DashboardMessage): value is WindowStat {
   return 'metric' in value && 'scope' in value && 'window_end' in value;
 }
+export function isEventEnvelope(value: DashboardMessage): value is EventEnvelope {
+  return 'event_id' in value
+    && 'event_type' in value
+    && 'actor_id' in value
+    && 'actor_role' in value
+    && 'timestamp' in value
+    && 'payload' in value;
+}
 
 interface EventState {
   events: EventEnvelope[];
