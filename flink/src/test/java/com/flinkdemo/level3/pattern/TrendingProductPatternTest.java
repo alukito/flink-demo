@@ -53,11 +53,31 @@ class TrendingProductPatternTest {
     }
 
     @Test
+    void deduplicatesRepeatedInputEventIdsBeforeCountingBuyers() throws Exception {
+        List<CepAlert> alerts = run(List.of(
+            event("added-1", "buyer-1", "2026-08-01T10:00:00Z"),
+            event("added-1", "buyer-1", "2026-08-01T10:00:00Z"),
+            event("added-2", "buyer-2", "2026-08-01T10:00:20Z")));
+
+        assertEquals(List.of(), alerts);
+    }
+
+    @Test
     void doesNotCombineABuyerAfterTheOneMinuteBoundary() throws Exception {
         List<CepAlert> alerts = run(List.of(
             event("added-1", "buyer-1", "2026-08-01T10:00:00Z"),
             event("added-2", "buyer-2", "2026-08-01T10:00:30Z"),
             event("added-3", "buyer-3", "2026-08-01T10:01:01Z")));
+
+        assertEquals(List.of(), alerts);
+    }
+
+    @Test
+    void doesNotMatchWhenTheThirdBuyerArrivesAtExactlyTheSixtySecondBoundary() throws Exception {
+        List<CepAlert> alerts = run(List.of(
+            event("added-1", "buyer-1", "2026-08-01T10:00:00Z"),
+            event("added-2", "buyer-2", "2026-08-01T10:00:30Z"),
+            event("added-3", "buyer-3", "2026-08-01T10:01:00Z")));
 
         assertEquals(List.of(), alerts);
     }
