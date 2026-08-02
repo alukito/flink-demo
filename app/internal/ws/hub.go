@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/coder/websocket"
 	"github.com/kuang/flink-demo/internal/event"
@@ -23,6 +24,27 @@ var allowedMetricScopes = map[string]map[string]bool{
 type metricIdentity struct {
 	Metric string `json:"metric"`
 	Scope  string `json:"scope"`
+}
+
+type alertIdentity struct {
+	AlertID    string    `json:"alert_id"`
+	DetectedAt time.Time `json:"detected_at"`
+}
+
+type cachedAlert struct {
+	detectedAt time.Time
+	data       []byte
+}
+
+func alertCacheEntry(data []byte) (string, cachedAlert, bool) {
+	var identity alertIdentity
+	if err := json.Unmarshal(data, &identity); err != nil || identity.AlertID == "" || identity.DetectedAt.IsZero() {
+		return "", cachedAlert{}, false
+	}
+	return identity.AlertID, cachedAlert{
+		detectedAt: identity.DetectedAt.UTC(),
+		data:       append([]byte(nil), data...),
+	}, true
 }
 
 func metricCacheKey(data []byte) (string, bool) {
@@ -50,11 +72,14 @@ type Hub struct {
 	mu          sync.RWMutex
 	clients     map[*Client]bool
 	metricCache map[string][]byte
+	alertCache  map[string]cachedAlert
 	Register    chan *Client
 	Unregister  chan *Client
 	broadcast   chan event.EventEnvelope
 	raw         chan []byte
+	alerts      chan []byte
 	done        chan struct{}
+	now         func() time.Time
 }
 
 // NewHub creates a new WebSocket hub.
@@ -62,11 +87,14 @@ func NewHub() *Hub {
 	return &Hub{
 		clients:     make(map[*Client]bool),
 		metricCache: make(map[string][]byte),
+		alertCache:  make(map[string]cachedAlert),
 		Register:    make(chan *Client),
 		Unregister:  make(chan *Client),
 		broadcast:   make(chan event.EventEnvelope, 100),
 		raw:         make(chan []byte, 100),
+		alerts:      make(chan []byte, 100),
 		done:        make(chan struct{}),
+		now:         time.Now,
 	}
 }
 
@@ -89,6 +117,31 @@ func (h *Hub) Run() {
 					case client.send <- message:
 					default:
 						slog.Warn("dashboard replay buffer full", "name", client.Name)
+					}
+				}
+				h.pruneAlerts(h.now().UTC())
+				alerts := make([]struct {
+					alertID string
+					cachedAlert
+				}, 0, len(h.alertCache))
+				for alertID, alert := range h.alertCache {
+					alerts = append(alerts, struct {
+						alertID string
+						cachedAlert
+					}{alertID: alertID, cachedAlert: alert})
+				}
+				sort.Slice(alerts, func(i, j int) bool {
+					if alerts[i].detectedAt.Equal(alerts[j].detectedAt) {
+						return alerts[i].alertID < alerts[j].alertID
+					}
+					return alerts[i].detectedAt.Before(alerts[j].detectedAt)
+				})
+				for _, alert := range alerts {
+					message := append([]byte(nil), alert.data...)
+					select {
+					case client.send <- message:
+					default:
+						slog.Warn("dashboard alert replay buffer full", "name", client.Name)
 					}
 				}
 			}
@@ -141,6 +194,29 @@ func (h *Hub) Run() {
 			}
 			h.mu.Unlock()
 
+		case data := <-h.alerts:
+			h.mu.Lock()
+			now := h.now().UTC()
+			h.pruneAlerts(now)
+			if alertID, alert, ok := alertCacheEntry(data); ok {
+				if !alert.detectedAt.Before(now.Add(-8 * time.Hour)) {
+					h.alertCache[alertID] = alert
+				}
+			} else {
+				slog.Warn("raw CEP alert is not cacheable")
+			}
+			for client := range h.clients {
+				if client.Role != "dashboard" {
+					continue
+				}
+				message := append([]byte(nil), data...)
+				select {
+				case client.send <- message:
+				default:
+				}
+			}
+			h.mu.Unlock()
+
 		case <-h.done:
 			return
 		}
@@ -163,6 +239,26 @@ func (h *Hub) BroadcastRaw(data []byte) {
 	case h.raw <- message:
 	default:
 		slog.Warn("raw broadcast channel full, dropping event")
+	}
+}
+
+// BroadcastCEPAlertRaw sends a raw CEP alert to dashboard clients and retains it
+// for recent-dashboard replay.
+func (h *Hub) BroadcastCEPAlertRaw(data []byte) {
+	message := append([]byte(nil), data...)
+	select {
+	case h.alerts <- message:
+	default:
+		slog.Warn("CEP alert broadcast channel full, dropping alert")
+	}
+}
+
+func (h *Hub) pruneAlerts(now time.Time) {
+	cutoff := now.Add(-8 * time.Hour)
+	for alertID, alert := range h.alertCache {
+		if alert.detectedAt.Before(cutoff) {
+			delete(h.alertCache, alertID)
+		}
 	}
 }
 

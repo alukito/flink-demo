@@ -14,6 +14,18 @@ import (
 type Broadcaster interface {
 	Broadcast(ev event.EventEnvelope)
 	BroadcastRaw(data []byte)
+	BroadcastCEPAlertRaw(data []byte)
+}
+
+var consumerTopics = []string{
+	"product.listed",
+	"cart.item.added",
+	"cart.checkout",
+	"order.confirmed",
+	"shipment.picked",
+	"shipment.delivered",
+	"flink.window.stats",
+	"flink.cep.alerts",
 }
 
 // Consumer reads Kafka topics and forwards events to the WebSocket hub.
@@ -29,17 +41,7 @@ func NewConsumer(addr string, hub Broadcaster) *Consumer {
 
 // Start begins consuming all input Kafka topics. Blocks until ctx is cancelled.
 func (c *Consumer) Start(ctx context.Context) error {
-	topics := []string{
-		"product.listed",
-		"cart.item.added",
-		"cart.checkout",
-		"order.confirmed",
-		"shipment.picked",
-		"shipment.delivered",
-		"flink.window.stats",
-	}
-
-	for _, topic := range topics {
+	for _, topic := range consumerTopics {
 		go c.consumeTopic(ctx, topic)
 	}
 
@@ -80,6 +82,11 @@ func (c *Consumer) forward(topic string, value []byte) error {
 	if topic == "flink.window.stats" {
 		c.broadcaster.BroadcastRaw(value)
 		slog.Debug("flink result consumed", "topic", topic)
+		return nil
+	}
+	if topic == "flink.cep.alerts" {
+		c.broadcaster.BroadcastCEPAlertRaw(value)
+		slog.Debug("flink CEP alert consumed", "topic", topic)
 		return nil
 	}
 
