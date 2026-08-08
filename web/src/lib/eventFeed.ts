@@ -9,7 +9,8 @@ export function appendUniqueEvent<T extends IdentifiedEvent>(
   event: T,
   maxEvents = MAX_LIVE_EVENTS,
 ): T[] {
-  const retained = events.length <= maxEvents ? events : events.slice(0, maxEvents);
+  const cap = Math.min(maxEvents, MAX_LIVE_EVENTS);
+  const retained = events.length <= cap ? events : events.slice(0, cap);
   if (retained.some((entry) => entry.event_id === event.event_id)) return retained;
-  return [event, ...retained].slice(0, maxEvents);
+  return [event, ...retained].slice(0, cap);
 }

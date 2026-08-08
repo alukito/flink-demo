@@ -41,3 +41,13 @@ test('retains at most one hundred newest unique events', () => {
   assert.equal(next[0].event_id, 'event-new');
   assert.equal(next[99].event_id, 'event-98');
 });
+
+test('clamps an oversized requested cap to one hundred events', () => {
+  const retained = Array.from({ length: 100 }, (_, index) => event(`event-${index}`));
+
+  const next = appendUniqueEvent(retained, event('event-new'), 101);
+
+  assert.equal(next.length, 100);
+  assert.equal(next[0].event_id, 'event-new');
+  assert.equal(next[99].event_id, 'event-98');
+});

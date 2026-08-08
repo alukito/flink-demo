@@ -175,3 +175,101 @@ Output: none.
 ## Concerns
 
 None for Task 1. React integration is intentionally deferred to Tasks 2 and 6.
+
+## Fix round 1 — enforce the live-feed hard cap
+
+### Changed behavior
+
+`appendUniqueEvent` now clamps a caller-supplied `maxEvents` value to
+`MAX_LIVE_EVENTS`. A value such as `101` can no longer produce a 101-entry
+feed; callers can still request a smaller cap. The regression coverage is in
+`web/src/lib/eventFeed.test.ts`.
+
+### RED
+
+```powershell
+$dockerConfigPath = Join-Path $env:TEMP 'phase4-live-docker-config'
+$env:DOCKER_CONFIG = $dockerConfigPath
+docker run --rm -v "${PWD}:/workspace" -w /workspace/web node:22-bookworm node --test src/lib/eventFeed.test.ts src/lib/cart.test.ts src/lib/session.test.ts
+```
+
+Exit code: `1`
+
+```text
+TAP version 13
+# Subtest: sums quantities across product lines instead of counting lines
+ok 1 - sums quantities across product lines instead of counting lines
+# Subtest: prepends a new event envelope without changing the retained events
+ok 2 - prepends a new event envelope without changing the retained events
+# Subtest: ignores a repeated event ID even when its payload differs
+ok 3 - ignores a repeated event ID even when its payload differs
+# Subtest: retains at most one hundred newest unique events
+ok 4 - retains at most one hundred newest unique events
+# Subtest: clamps an oversized requested cap to one hundred events
+not ok 5 - clamps an oversized requested cap to one hundred events
+  ---
+  duration_ms: 1.066882
+  type: 'test'
+  location: '/workspace/web/src/lib/eventFeed.test.ts:45:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+
+    101 !== 100
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 100
+  actual: 101
+  operator: 'strictEqual'
+  ...
+# Subtest: reads and clears all three session fields
+ok 6 - reads and clears all three session fields
+# Subtest: authorizes only a complete session with the requested role
+ok 7 - authorizes only a complete session with the requested role
+1..7
+# tests 7
+# suites 0
+# pass 6
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 213.837718
+```
+
+### GREEN
+
+The same command after clamping the effective cap completed with exit code
+`0`:
+
+```text
+TAP version 13
+# Subtest: sums quantities across product lines instead of counting lines
+ok 1 - sums quantities across product lines instead of counting lines
+# Subtest: prepends a new event envelope without changing the retained events
+ok 2 - prepends a new event envelope without changing the retained events
+# Subtest: ignores a repeated event ID even when its payload differs
+ok 3 - ignores a repeated event ID even when its payload differs
+# Subtest: retains at most one hundred newest unique events
+ok 4 - retains at most one hundred newest unique events
+# Subtest: clamps an oversized requested cap to one hundred events
+ok 5 - clamps an oversized requested cap to one hundred events
+# Subtest: reads and clears all three session fields
+ok 6 - reads and clears all three session fields
+# Subtest: authorizes only a complete session with the requested role
+ok 7 - authorizes only a complete session with the requested role
+1..7
+# tests 7
+# suites 0
+# pass 7
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 232.917141
+```
+
+### Commit
+
+Recorded in the follow-up Task 1 review-fix commit.
