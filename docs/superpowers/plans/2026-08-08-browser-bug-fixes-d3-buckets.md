@@ -84,7 +84,7 @@
 - Modify: `web/package.json`
 - Modify: `web/package-lock.json`
 
-- [ ] **Step 1: Add failing bucket-model tests for the approved example.**
+- [x] **Step 1: Add failing bucket-model tests for the approved example.**
 
   Write tests using window snapshots ending at `07:05` with value `2` and `07:15` with value `1`, evaluated at `07:10`. The normalized sequence must be:
 
@@ -96,19 +96,19 @@
 
   Also test that multiple snapshots for the same `(metric, scope, window_end)` select the latest value, the exact `07:10` boundary belongs to the `07:10–07:15` bucket, invalid timestamps are ignored, and the result has exactly 24 chronologically ordered buckets.
 
-- [ ] **Step 2: Add failing Jakarta-format tests.**
+- [x] **Step 2: Add failing Jakarta-format tests.**
 
   Test formatting a UTC `window_end` into a Jakarta start label and a Jakarta range label, including a UTC-to-WIB boundary. The test must pass under a non-Jakarta process timezone as well.
 
-- [ ] **Step 3: Implement the pure bucket model.**
+- [x] **Step 3: Implement the pure bucket model.**
 
   Export `FIVE_MINUTES_MS`, `METRIC_BUCKET_COUNT`, `activeWindowEnd(now)`, `metricBuckets(stats, now)`, and explicit Jakarta label/range formatters. Derive a bucket start as `window_end - FIVE_MINUTES_MS`; generate all 24 expected window ends ending at the active aligned window end; use zero and empty details if no stat exists. Key source snapshots by `window_end` after Dashboard has already selected one metric and scope.
 
-- [ ] **Step 4: Add D3 dependencies.**
+- [x] **Step 4: Add D3 dependencies.**
 
   Install `d3` and its TypeScript declarations as project dependencies, updating the package manifest and lockfile without changing unrelated packages.
 
-- [ ] **Step 5: Run the bucket tests.**
+- [x] **Step 5: Run the bucket tests.**
 
   Run the new test file and confirm it captures replacement, zero-fill, time alignment, and Jakarta formatting independently of D3 and React.
 
