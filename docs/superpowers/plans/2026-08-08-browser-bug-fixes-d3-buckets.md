@@ -60,19 +60,19 @@
 - Modify: `web/src/hooks/useWebSocket.ts`
 - Modify: `web/src/context/EventContext.tsx`
 
-- [ ] **Step 1: Write failing lifecycle tests.**
+- [x] **Step 1: Write failing lifecycle tests.**
 
   Test a pure `shouldReconnect({ disposed, isCurrentSocket, hasToken })` decision helper. It must return false after effect cleanup, when a stale socket closes after being replaced, or when no token exists; it returns true only for the active socket in a live effect.
 
-- [ ] **Step 2: Implement per-effect socket ownership.**
+- [x] **Step 2: Implement per-effect socket ownership.**
 
   Refactor `useWebSocket` so each effect owns a `disposed` flag and the socket it created. Clear its timer in cleanup, set `disposed = true` before closing, and schedule reconnect only when `shouldReconnect` accepts that closing socket. Do not allow an old `onclose` callback to overwrite connection state or create a second connection. Retain the existing one-second backoff and JSON parse handling.
 
-- [ ] **Step 3: Use immutable `event_id` deduplication in the provider.**
+- [x] **Step 3: Use immutable `event_id` deduplication in the provider.**
 
   Replace the inline `setEvents` append logic in `EventContext.tsx` with `appendUniqueEvent`. Keep only the newest 100 unique events, which bounds the browser memory used for the feed.
 
-- [ ] **Step 4: Run lifecycle and event tests.**
+- [x] **Step 4: Run lifecycle and event tests.**
 
   Verify both pure helper suites and inspect the hook dependency arrangement for a single WebSocket per mounted consumer.
 
