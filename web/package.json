@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "test:browser-state": "node --test src/lib/eventFeed.test.ts src/lib/cart.test.ts src/lib/session.test.ts",
     "test:jakarta": "node --test src/lib/jakartaDay.test.ts",
     "test:cep": "node --test src/lib/cepAlerts.test.ts",
     "lint": "oxlint",
