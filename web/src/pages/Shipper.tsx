@@ -30,10 +30,6 @@ export default function Shipper() {
   const [deliveringId, setDeliveringId] = useState<string | null>(null);
   const countdownRef = useRef<number | null>(null);
 
-  useEffect(() => {
-    if (!name || !token) { navigate('/'); }
-  }, [name, token, navigate]);
-
   const loadJobs = useCallback(async () => {
     if (!token) return;
     const resp = await listShipperJobs(token);
@@ -118,8 +114,6 @@ export default function Shipper() {
     clearSession();
     navigate('/');
   };
-
-  if (!name) return null;
 
   const activeJobs = Object.entries(pickedOrders).filter(([, s]) => s > 0);
   const deliveredJobs = Object.entries(pickedOrders).filter(([, s]) => s === 0);

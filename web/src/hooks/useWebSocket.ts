@@ -1,6 +1,7 @@
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSession } from '../context/SessionContext';
 import type { EventEnvelope } from '../context/EventContext';
+import { resolveWebSocketToken, shouldReconnect } from '../lib/webSocketLifecycle';
 
 /**
  * useWebSocket connects to the server's WebSocket endpoint and calls
@@ -12,57 +13,75 @@ import type { EventEnvelope } from '../context/EventContext';
  */
 export function useWebSocket<T = EventEnvelope>(onEvent: (event: T) => void, overrideToken?: string | null) {
   const { token: sessionToken } = useSession();
-  const token = overrideToken ?? sessionToken;
-  const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimerRef = useRef<number | null>(null);
+  const token = resolveWebSocketToken(overrideToken, sessionToken);
   const [connected, setConnected] = useState(false);
   const onEventRef = useRef(onEvent);
   onEventRef.current = onEvent;
 
-  const connect = useCallback(() => {
-    if (!token) return;
+  useEffect(() => {
+    let disposed = false;
+    let socket: WebSocket | null = null;
+    let reconnectTimer: number | null = null;
 
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws?token=${token}`;
+    const connect = () => {
+      if (disposed || !token) return;
 
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${protocol}//${window.location.host}/ws?token=${token}`;
+      const ws = new WebSocket(wsUrl);
+      socket = ws;
 
-    ws.onopen = () => {
-      setConnected(true);
-      console.log('[ws] connected');
+      ws.onopen = () => {
+        if (disposed || socket !== ws) return;
+        setConnected(true);
+        console.log('[ws] connected');
+      };
+
+      ws.onmessage = (e) => {
+        if (disposed || socket !== ws) return;
+        try {
+          const event: T = JSON.parse(e.data) as T;
+          onEventRef.current(event);
+        } catch (err) {
+          console.error('[ws] failed to parse message', err);
+        }
+      };
+
+      ws.onclose = () => {
+        if (!shouldReconnect({
+          disposed,
+          isCurrentSocket: socket === ws,
+          hasToken: Boolean(token),
+        })) return;
+
+        socket = null;
+        setConnected(false);
+        console.log('[ws] disconnected, reconnecting in 1s...');
+        reconnectTimer = window.setTimeout(() => {
+          reconnectTimer = null;
+          connect();
+        }, 1000);
+      };
+
+      ws.onerror = (err) => {
+        console.error('[ws] error', err);
+        if (!disposed && socket === ws) ws.close();
+      };
     };
 
-    ws.onmessage = (e) => {
-      try {
-        const event: T = JSON.parse(e.data) as T;
-        onEventRef.current(event);
-      } catch (err) {
-        console.error('[ws] failed to parse message', err);
+    setConnected(false);
+    connect();
+
+    return () => {
+      disposed = true;
+      if (reconnectTimer !== null) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
       }
-    };
-
-    ws.onclose = () => {
-      setConnected(false);
-      console.log('[ws] disconnected, reconnecting in 1s...');
-      reconnectTimerRef.current = window.setTimeout(connect, 1000);
-    };
-
-    ws.onerror = (err) => {
-      console.error('[ws] error', err);
-      ws.close();
+      socket?.close();
+      socket = null;
     };
   }, [token]);
-
-  useEffect(() => {
-    connect();
-    return () => {
-      if (reconnectTimerRef.current) {
-        clearTimeout(reconnectTimerRef.current);
-      }
-      wsRef.current?.close();
-    };
-  }, [connect]);
 
   return { connected };
 }

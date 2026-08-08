@@ -24,6 +24,15 @@ func waitForRawDrain(t *testing.T, hub *Hub) {
 	hub.Unregister <- barrier
 }
 
+func waitForAlertCache(t *testing.T, hub *Hub, want int) {
+	t.Helper()
+	require.Eventually(t, func() bool {
+		hub.mu.RLock()
+		defer hub.mu.RUnlock()
+		return len(hub.alertCache) == want
+	}, time.Second, 10*time.Millisecond)
+}
+
 func TestHubRegisterAndUnregister(t *testing.T) {
 	hub := NewHub()
 	go hub.Run()
@@ -52,6 +61,105 @@ func TestBroadcastRawOnlyQueuesForDashboard(t *testing.T) {
 
 	assert.Eventually(t, func() bool { return len(dashboard.send) == 1 }, time.Second, 10*time.Millisecond)
 	assert.Empty(t, buyer.send)
+}
+
+func TestBroadcastCEPAlertOnlyQueuesForDashboard(t *testing.T) {
+	hub := NewHub()
+	go hub.Run()
+	defer hub.Close()
+
+	dashboard := &Client{Name: "dash", Role: "dashboard", send: make(chan []byte, 1)}
+	buyer := &Client{Name: "buyer", Role: "buyer", send: make(chan []byte, 1)}
+	hub.Register <- dashboard
+	hub.Register <- buyer
+	hub.BroadcastCEPAlertRaw([]byte(`{"alert_id":"slow_delivery:o1","detected_at":"2026-08-01T10:07:00Z"}`))
+
+	require.Eventually(t, func() bool { return len(dashboard.send) == 1 }, time.Second, 10*time.Millisecond)
+	assert.Empty(t, buyer.send)
+}
+
+func TestCEPAlertReplayCopiesBytesAndReplacesDuplicateIDs(t *testing.T) {
+	hub := NewHub()
+	hub.now = func() time.Time { return time.Date(2026, 8, 1, 18, 0, 0, 0, time.UTC) }
+	go hub.Run()
+	defer hub.Close()
+
+	first := []byte(`{"alert_id":"slow_delivery:o1","detected_at":"2026-08-01T10:07:00Z","detail":{"attempt":1}}`)
+	latest := []byte(`{"alert_id":"slow_delivery:o1","detected_at":"2026-08-01T10:08:00Z","detail":{"attempt":2}}`)
+	expected := append([]byte(nil), latest...)
+	hub.BroadcastCEPAlertRaw(first)
+	waitForAlertCache(t, hub, 1)
+	first[0] = '!'
+	hub.BroadcastCEPAlertRaw(latest)
+	waitForAlertCache(t, hub, 1)
+	latest[0] = '!'
+
+	dashboard := &Client{Name: "dash", Role: "dashboard", send: make(chan []byte, 2)}
+	hub.Register <- dashboard
+	require.Eventually(t, func() bool { return len(dashboard.send) == 1 }, time.Second, 10*time.Millisecond)
+	got := <-dashboard.send
+	assert.True(t, bytes.Equal(expected, got))
+	got[0] = '!'
+
+	secondDashboard := &Client{Name: "dash-2", Role: "dashboard", send: make(chan []byte, 2)}
+	hub.Register <- secondDashboard
+	require.Eventually(t, func() bool { return len(secondDashboard.send) == 1 }, time.Second, 10*time.Millisecond)
+	assert.True(t, bytes.Equal(expected, <-secondDashboard.send))
+}
+
+func TestCEPAlertReplayPrunesEntriesOlderThanEightHours(t *testing.T) {
+	now := time.Date(2026, 8, 1, 18, 0, 0, 0, time.UTC)
+	hub := NewHub()
+	hub.now = func() time.Time { return now }
+	go hub.Run()
+	defer hub.Close()
+
+	hub.BroadcastCEPAlertRaw([]byte(`{"alert_id":"expired","detected_at":"2026-08-01T09:59:59Z"}`))
+	waitForAlertCache(t, hub, 0)
+	hub.BroadcastCEPAlertRaw([]byte(`{"alert_id":"retained","detected_at":"2026-08-01T10:00:00Z"}`))
+	waitForAlertCache(t, hub, 1)
+
+	dashboard := &Client{Name: "dash", Role: "dashboard", send: make(chan []byte, 2)}
+	hub.Register <- dashboard
+	require.Eventually(t, func() bool { return len(dashboard.send) == 1 }, time.Second, 10*time.Millisecond)
+	assert.JSONEq(t, `{"alert_id":"retained","detected_at":"2026-08-01T10:00:00Z"}`, string(<-dashboard.send))
+}
+
+func TestCEPAlertReplaySortsByDetectedAtThenAlertID(t *testing.T) {
+	hub := NewHub()
+	hub.now = func() time.Time { return time.Date(2026, 8, 1, 18, 0, 0, 0, time.UTC) }
+	go hub.Run()
+	defer hub.Close()
+
+	hub.BroadcastCEPAlertRaw([]byte(`{"alert_id":"b","detected_at":"2026-08-01T10:01:00Z"}`))
+	hub.BroadcastCEPAlertRaw([]byte(`{"alert_id":"z","detected_at":"2026-08-01T10:00:00Z"}`))
+	hub.BroadcastCEPAlertRaw([]byte(`{"alert_id":"a","detected_at":"2026-08-01T10:01:00Z"}`))
+	waitForAlertCache(t, hub, 3)
+
+	dashboard := &Client{Name: "dash", Role: "dashboard", send: make(chan []byte, 4)}
+	hub.Register <- dashboard
+	require.Eventually(t, func() bool { return len(dashboard.send) == 3 }, time.Second, 10*time.Millisecond)
+	assert.JSONEq(t, `{"alert_id":"z","detected_at":"2026-08-01T10:00:00Z"}`, string(<-dashboard.send))
+	assert.JSONEq(t, `{"alert_id":"a","detected_at":"2026-08-01T10:01:00Z"}`, string(<-dashboard.send))
+	assert.JSONEq(t, `{"alert_id":"b","detected_at":"2026-08-01T10:01:00Z"}`, string(<-dashboard.send))
+}
+
+func TestMalformedCEPAlertIsDeliveredLiveButNotReplayed(t *testing.T) {
+	hub := NewHub()
+	go hub.Run()
+	defer hub.Close()
+
+	dashboard := &Client{Name: "dash", Role: "dashboard", send: make(chan []byte, 2)}
+	hub.Register <- dashboard
+	malformed := []byte(`{"alert_id":"missing-timestamp"}`)
+	hub.BroadcastCEPAlertRaw(malformed)
+	require.Eventually(t, func() bool { return len(dashboard.send) == 1 }, time.Second, 10*time.Millisecond)
+	assert.True(t, bytes.Equal(malformed, <-dashboard.send))
+	waitForAlertCache(t, hub, 0)
+
+	reloaded := &Client{Name: "reload", Role: "dashboard", send: make(chan []byte, 1)}
+	hub.Register <- reloaded
+	assert.Never(t, func() bool { return len(reloaded.send) != 0 }, 100*time.Millisecond, 10*time.Millisecond)
 }
 
 func TestDashboardRegistrationReplaysLatestMetricPerScope(t *testing.T) {

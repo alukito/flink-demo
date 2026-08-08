@@ -38,10 +38,6 @@ export default function Seller() {
   const [adding, setAdding] = useState(false);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!name || !token) { navigate('/'); }
-  }, [name, token, navigate]);
-
   const loadProducts = useCallback(async () => {
     if (!token) return;
     const resp = await listSellerProducts(token);
@@ -99,8 +95,6 @@ export default function Seller() {
     clearSession();
     navigate('/');
   };
-
-  if (!name) return null;
 
   return (
     <div style={{ padding: '20px', maxWidth: '900px', margin: '0 auto' }}>

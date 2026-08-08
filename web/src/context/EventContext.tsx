@@ -1,4 +1,8 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
+import type { CepAlert } from '../lib/cepAlerts';
+import { appendUniqueEvent } from '../lib/eventFeed';
+
+export type { CepAlert } from '../lib/cepAlerts';
 
 export interface EventEnvelope {
   event_id: string;
@@ -17,9 +21,17 @@ export interface WindowStat {
   value: number;
   detail: Record<string, string>;
 }
-export type DashboardMessage = EventEnvelope | WindowStat;
+export type DashboardMessage = EventEnvelope | WindowStat | CepAlert;
 export function isWindowStat(value: DashboardMessage): value is WindowStat {
   return 'metric' in value && 'scope' in value && 'window_end' in value;
+}
+export function isEventEnvelope(value: DashboardMessage): value is EventEnvelope {
+  return 'event_id' in value
+    && 'event_type' in value
+    && 'actor_id' in value
+    && 'actor_role' in value
+    && 'timestamp' in value
+    && 'payload' in value;
 }
 
 interface EventState {
@@ -30,13 +42,11 @@ interface EventState {
 
 const EventContext = createContext<EventState | undefined>(undefined);
 
-const MAX_EVENTS = 100;
-
 export function EventProvider({ children }: { children: ReactNode }) {
   const [events, setEvents] = useState<EventEnvelope[]>([]);
 
   const addEvent = useCallback((event: EventEnvelope) => {
-    setEvents((prev) => [event, ...prev].slice(0, MAX_EVENTS));
+    setEvents((prev) => appendUniqueEvent(prev, event));
   }, []);
 
   const clearEvents = useCallback(() => {

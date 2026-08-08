@@ -13,7 +13,7 @@
 - Implement abandoned_cart, trending_product, slow_delivery, order_surge, and delivery_completed.
 - Run one independently submitted CEP job per pattern.
 - Use event time from envelope timestamp with bounded-out-of-orderness watermarks.
-- Add stable server-generated cart_id to cart.item.added and cart.checkout.
+- Add stable browser-generated cart_id to cart.item.added and cart.checkout; Go validates and propagates it unchanged.
 - Emit immutable alerts to flink.cep.alerts with alert_id, pattern, detected_at, and detail.
 - Deduplicate input event_id before CEP; deduplicate replayed alerts by alert_id in Go and React.
 - Retain only the last eight hours of alerts in memory.

@@ -6,6 +6,7 @@ import { useEvents } from '../context/EventContext';
 import {
   listBuyerProducts, addToCart, checkout, listBuyerOrders,
 } from '../api/client';
+import { cartItemCount } from '../lib/cart';
 
 interface Product {
   id: string; name: string; price: number; quantity: number; seller_id: string;
@@ -37,16 +38,13 @@ export default function Buyer() {
 
   const [products, setProducts] = useState<Product[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [cartId, setCartId] = useState(() => crypto.randomUUID());
   const [orders, setOrders] = useState<Order[]>([]);
   const [shippingAddress, setShippingAddress] = useState('');
   const [error, setError] = useState('');
   const [showCheckout, setShowCheckout] = useState(false);
   const [checkingOut, setCheckingOut] = useState(false);
   const [cartAddingId, setCartAddingId] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!name || !token) { navigate('/'); }
-  }, [name, token, navigate]);
 
   const loadProducts = useCallback(async () => {
     if (!token) return;
@@ -88,7 +86,7 @@ export default function Buyer() {
       } else {
         setCart([...cart, { product, quantity: 1 }]);
       }
-      await addToCart(token, product.id, 1);
+      await addToCart(token, cartId, product.id, 1);
     } finally {
       setCartAddingId(null);
     }
@@ -103,12 +101,13 @@ export default function Buyer() {
         product_id: item.product.id,
         quantity: item.quantity,
       }));
-      const resp = await checkout(token, items, shippingAddress);
+      const resp = await checkout(token, cartId, items, shippingAddress);
       if (!resp.ok) {
         setError(await resp.text());
         return;
       }
       setCart([]);
+      setCartId(crypto.randomUUID());
       setShippingAddress('');
       setShowCheckout(false);
       loadOrders();
@@ -122,15 +121,13 @@ export default function Buyer() {
     navigate('/');
   };
 
-  if (!name) return null;
-
   return (
     <div style={{ padding: '20px', maxWidth: '900px', margin: '0 auto' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <h1>Buyer: {name}</h1>
         <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
           <span style={{ padding: '4px 12px', borderRadius: '4px', background: '#e0e7ff', fontSize: '14px' }}>
-            Cart: {cart.length} items — {formatPrice(cartTotal)}
+            Cart: {cartItemCount(cart)} items — {formatPrice(cartTotal)}
           </span>
           {cart.length > 0 && (
             <button onClick={() => setShowCheckout(!showCheckout)} style={{ padding: '6px 16px' }}>

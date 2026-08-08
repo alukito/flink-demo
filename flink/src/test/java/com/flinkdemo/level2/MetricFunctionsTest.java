@@ -60,18 +60,22 @@ class MetricFunctionsTest {
         assertEquals(1L, accumulator);
     }
 
-    @Test void countWindowResultEmitsAnIsoUtcWindowEnd() {
+    @Test void countWindowResultKeepsTheWindowEndForGrowingSnapshots() {
         long start = Instant.parse("2026-07-18T10:00:00Z").toEpochMilli();
         TimeWindow window = new TimeWindow(start, start + 300_000L);
         List<WindowStat> output = new ArrayList<>();
 
-        new CountWindowResult("tx_count").process(window, List.of(5L), collector(output));
+        CountWindowResult result = new CountWindowResult("tx_count");
+        result.process(window, List.of(2L), collector(output));
+        result.process(window, List.of(5L), collector(output));
 
-        assertEquals(1, output.size());
-        WindowStat stat = output.get(0);
+        assertEquals(2, output.size());
+        WindowStat stat = output.get(1);
         assertEquals("tx_count", stat.getMetric());
         assertEquals("window", stat.getScope());
+        assertEquals("2026-07-18T10:05:00Z", output.get(0).getWindowEnd());
         assertEquals("2026-07-18T10:05:00Z", stat.getWindowEnd());
+        assertEquals(2L, output.get(0).getValue());
         assertEquals(5L, stat.getValue());
         assertEquals(0, stat.getDetail().size());
     }

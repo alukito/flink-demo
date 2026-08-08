@@ -12,7 +12,7 @@ Phase 4 extends the existing Phase 3 Level 2 stateful metrics demo. It demonstra
 - Run one Flink CEP job per pattern.
 - Use event time from the envelope `timestamp`, with watermarks and bounded out-of-orderness appropriate for the local demo.
 - Treat alerts as immutable facts. There is no detected/resolved/expired lifecycle and no downstream reaction workflow.
-- Add a stable server-generated `cart_id` to cart events so abandoned-cart episodes can be correlated correctly.
+- Add a stable browser-generated `cart_id` to cart events so abandoned-cart episodes can be correlated correctly; Go validates and propagates it unchanged.
 - Use deterministic `alert_id` values for replay and defensive deduplication.
 - Emit raw alert records from CEP. Go forwards and lightly caches them; React derives display counts.
 - Retain only the last eight hours of alert history in memory. No persistent alert store is added.
@@ -37,7 +37,7 @@ The `trending_product` detector may use distinct buyers internally because that 
 
 ### Cart correlation
 
-The Go buyer cart flow adds a server-generated `cart_id` to `cart.item.added` and `cart.checkout` payloads. The identifier remains stable for one cart episode and is separate from the per-seller `order_id` created at checkout.
+The browser creates one UUID for the active cart episode and sends it with `cart.item.added` and `cart.checkout`. Go requires a non-empty value and propagates it unchanged. The identifier remains stable for one cart episode and is separate from the per-seller `order_id` created at checkout.
 
 ### Alert envelope
 
