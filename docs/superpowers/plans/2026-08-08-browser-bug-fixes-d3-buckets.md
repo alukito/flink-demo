@@ -178,23 +178,23 @@
 - Modify: `web/src/pages/Seller.tsx`
 - Modify: `web/src/pages/Shipper.tsx`
 
-- [ ] **Step 1: Implement session storage through the tested helper.**
+- [x] **Step 1: Implement session storage through the tested helper.**
 
   Replace direct `localStorage` reads/writes/removals in `SessionContext` with `readSession`, `writeSession`, and `clearSession`. Initialize state from the validated session record so a stale or malformed browser value cannot masquerade as a user session.
 
-- [ ] **Step 2: Add a declarative role guard.**
+- [x] **Step 2: Add a declarative role guard.**
 
   Implement `RequireRole` using `useSession` and React Router's `<Navigate to="/" replace />`. Render children only when token, name, and exact role are valid. This prevents the protected page, its requests, and its WebSocket hook from mounting first.
 
-- [ ] **Step 3: Wrap protected routes.**
+- [x] **Step 3: Wrap protected routes.**
 
   In `App.tsx`, guard `/buyer`, `/seller`, and `/shipper` with their matching role. Leave `/` and `/dashboard` public; dashboard continues to use its separate dashboard token rather than the user session.
 
-- [ ] **Step 4: Simplify page-local checks and correct the cart label.**
+- [x] **Step 4: Simplify page-local checks and correct the cart label.**
 
   Remove redundant navigation checks from Buyer, Seller, and Shipper once routing owns authorization. In Buyer, use `cartItemCount(cart)` for the header text so four units across one or more product lines reads `Cart: 4 items`.
 
-- [ ] **Step 5: Manually validate two-tab isolation.**
+- [x] **Step 5: Manually validate two-tab isolation.**
 
   In one browser tab establish a buyer session, then open `/shipper`, `/seller`, and an unauthenticated tab. Each role mismatch must immediately redirect to `/`; a fresh tab must not inherit the first tab's identity. Verify `/dashboard` still loads independently.
 
