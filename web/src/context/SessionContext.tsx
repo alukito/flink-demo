@@ -1,6 +1,12 @@
 import { createContext, useContext, useState, type ReactNode } from 'react';
+import {
+  clearSession as clearStoredSession,
+  readSession,
+  writeSession,
+  type Role,
+} from '../lib/session';
 
-export type Role = 'buyer' | 'seller' | 'shipper' | 'dashboard';
+export type { Role } from '../lib/session';
 
 interface SessionState {
   token: string | null;
@@ -13,36 +19,27 @@ interface SessionState {
 const SessionContext = createContext<SessionState | undefined>(undefined);
 
 export function SessionProvider({ children }: { children: ReactNode }) {
-  const [token, setToken] = useState<string | null>(() => {
-    return localStorage.getItem('token');
-  });
-  const [name, setName] = useState<string | null>(() => {
-    return localStorage.getItem('name');
-  });
-  const [role, setRole] = useState<Role | null>(() => {
-    return localStorage.getItem('role') as Role | null;
-  });
+  const [session, setSessionState] = useState(() => readSession());
 
   const setSession = (newToken: string, newName: string, newRole: Role) => {
-    setToken(newToken);
-    setName(newName);
-    setRole(newRole);
-    localStorage.setItem('token', newToken);
-    localStorage.setItem('name', newName);
-    localStorage.setItem('role', newRole);
+    const nextSession = { token: newToken, name: newName, role: newRole };
+    setSessionState(nextSession);
+    writeSession(nextSession);
   };
 
   const clearSession = () => {
-    setToken(null);
-    setName(null);
-    setRole(null);
-    localStorage.removeItem('token');
-    localStorage.removeItem('name');
-    localStorage.removeItem('role');
+    setSessionState(null);
+    clearStoredSession();
   };
 
   return (
-    <SessionContext.Provider value={{ token, name, role, setSession, clearSession }}>
+    <SessionContext.Provider value={{
+      token: session?.token ?? null,
+      name: session?.name ?? null,
+      role: session?.role ?? null,
+      setSession,
+      clearSession,
+    }}>
       {children}
     </SessionContext.Provider>
   );
