@@ -12,8 +12,6 @@ import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.streaming.api.windowing.assigners.SlidingProcessingTimeWindows;
-import org.apache.flink.streaming.api.windowing.time.Time;
 
 public final class MetricJob {
     private MetricJob() {}
@@ -41,10 +39,10 @@ public final class MetricJob {
         DataStream<WindowStat> output = null;
         if (definition.hasWindow()) {
             output = definition.isTopProduct()
-                ? source.windowAll(SlidingProcessingTimeWindows.of(Time.minutes(5), Time.seconds(5)))
+                ? MetricWindowing.windowAll(source)
                     .process(new TopProductWindowFunction())
                     .name("top-product-window")
-                : source.windowAll(SlidingProcessingTimeWindows.of(Time.minutes(5), Time.seconds(5)))
+                : MetricWindowing.windowAll(source)
                     .aggregate(new CountAggregate(), new CountWindowResult(definition.metric()))
                     .name(definition.metric() + "-window");
         }
