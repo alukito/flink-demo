@@ -21,10 +21,14 @@ public final class MetricWindowing {
             DataStream<T> source, Time windowSize, Time updateInterval) {
         return source
             .windowAll(windowAssigner(windowSize))
-            .trigger(ContinuousProcessingTimeTrigger.of(updateInterval));
+            .trigger(trigger(updateInterval));
     }
 
     static TumblingProcessingTimeWindows windowAssigner(Time windowSize) {
         return TumblingProcessingTimeWindows.of(windowSize);
+    }
+
+    static ContinuousProcessingTimeTrigger<TimeWindow> trigger(Time updateInterval) {
+        return ContinuousProcessingTimeTrigger.of(updateInterval);
     }
 }
