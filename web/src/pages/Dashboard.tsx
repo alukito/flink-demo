@@ -43,15 +43,15 @@ function EventRow({ event }: { event: EventEnvelope }) {
 
 function AlertCountChart({ points, label }: { points: AlertBucket[]; label: string }) {
   const max = Math.max(1, ...points.map((point) => point.count));
-  return <div className="metric-chart cep-chart" aria-label={`${label} history`}>
-    {points.map((point) => <div key={point.start} className="metric-bar cep-bar" title={`${new Date(point.start).toLocaleString()} — ${point.count.toLocaleString('id-ID')} alerts`} style={{ height: `${Math.max(3, point.count / max * 1e2)}%` }} />)}
+  return <div className="cep-chart" aria-label={`${label} history`}>
+    {points.map((point) => <div key={point.start} className="cep-bar" title={`${new Date(point.start).toLocaleString()} — ${point.count.toLocaleString('id-ID')} alerts`} style={{ height: `${Math.max(3, point.count / max * 1e2)}%` }} />)}
   </div>;
 }
 
 function DurationChart({ points }: { points: DeliveryDuration[] }) {
   const max = Math.max(1, ...points.map((point) => point.elapsedSeconds));
-  return <div className="metric-chart cep-chart" aria-label="Checkout to delivery elapsed time">
-    {points.length === 0 ? <span className="empty-chart">Waiting for a completed delivery…</span> : points.map((point) => <div key={point.alertId} className="metric-bar cep-duration-bar" title={`${new Date(point.detectedAt).toLocaleString()} — ${point.elapsedSeconds.toLocaleString('id-ID')} seconds`} style={{ height: `${Math.max(8, point.elapsedSeconds / max * 1e2)}%` }} />)}
+  return <div className="cep-chart" aria-label="Checkout to delivery elapsed time">
+    {points.length === 0 ? <span className="empty-chart">Waiting for a completed delivery…</span> : points.map((point) => <div key={point.alertId} className="cep-duration-bar" title={`${new Date(point.detectedAt).toLocaleString()} — ${point.elapsedSeconds.toLocaleString('id-ID')} seconds`} style={{ height: `${Math.max(8, point.elapsedSeconds / max * 1e2)}%` }} />)}
   </div>;
 }
 
@@ -132,7 +132,7 @@ export default function Dashboard() {
           jakartaDayForWindowEnd(item.window_end) === jakartaDay,
       );
       const topName = metric.name === 'top_product' ? activeBucket?.detail.name : undefined;
-      return <article className="metric-card" key={metric.name}><h3>{metric.label}</h3><div className="metric-values"><div><span>Current 5 min</span><strong>{metric.window ? formatValue(activeBucket?.value, metric.rupiah) : '—'}</strong></div><div><span>Today</span><strong>{formatValue(daily?.value, metric.rupiah)}</strong></div></div>{topName && <p className="metric-detail">{topName}</p>}{metric.window ? <MetricBarChart buckets={buckets} title={`${metric.label} five-minute aligned-window history`} formatValue={(value) => formatValue(value, metric.rupiah)} /> : <div className="metric-chart"><span className="empty-chart">Daily cumulative</span></div>}</article>;
+      return <article className="metric-card" key={metric.name}><h3>{metric.label}</h3><div className="metric-values"><div><span>Current 5 min</span><strong>{metric.window ? formatValue(activeBucket?.value, metric.rupiah) : '—'}</strong></div><div><span>Today</span><strong>{formatValue(daily?.value, metric.rupiah)}</strong></div></div>{topName && <p className="metric-detail">{topName}</p>}{metric.window ? <MetricBarChart buckets={buckets} title={`${metric.label} five-minute aligned-window history`} formatValue={(value) => formatValue(value, metric.rupiah)} /> : <div className="daily-placeholder"><span className="empty-chart">Daily cumulative</span></div>}</article>;
     })}</div></section>
     <section><h2>Level 3 — CEP Alert History</h2><p>Immutable alert facts retained in this dashboard for the last eight hours.</p><div className="cep-grid">
       <article className="metric-card"><h3>Abandoned carts</h3><p className="cep-card-note">Count by ten-minute bucket</p><AlertCountChart points={abandonedCartBuckets} label="Abandoned carts" /></article>

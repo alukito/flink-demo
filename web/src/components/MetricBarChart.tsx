@@ -13,12 +13,12 @@ interface MetricBarChartProps {
 }
 
 const CHART_HEIGHT = 150;
-const MARGIN = { top: 12, right: 8, bottom: 32, left: 38 };
+const MARGIN = { top: 12, right: 8, bottom: 32, left: 64 };
 
 export function MetricBarChart({ buckets, title, formatValue }: MetricBarChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
-  const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const [activeWindowEnd, setActiveWindowEnd] = useState<string | null>(null);
   const titleId = useId();
   const tooltipId = useId();
 
@@ -45,7 +45,9 @@ export function MetricBarChart({ buckets, title, formatValue }: MetricBarChartPr
     return { innerHeight, x, y, yTicks: y.ticks(3) };
   }, [buckets, width]);
 
-  const activeBucket = activeIndex === null ? null : buckets[activeIndex];
+  const activeBucket = activeWindowEnd === null
+    ? null
+    : buckets.find((bucket) => bucket.windowEnd === activeWindowEnd) ?? null;
   const tooltipText = activeBucket
     ? `${formatJakartaBucketRange(activeBucket.windowEnd) ?? activeBucket.windowEnd}: ${formatValue(activeBucket.value)}`
     : 'Focus or hover a bar to inspect its five-minute aligned window.';
@@ -63,7 +65,7 @@ export function MetricBarChart({ buckets, title, formatValue }: MetricBarChartPr
         <line className="metric-bucket-axis" x1={0} x2={chart.x.range()[1]} y1={chart.innerHeight} y2={chart.innerHeight} />
         {chart.yTicks.map((tick) => <g className="metric-bucket-y-tick" key={tick} transform={`translate(0,${chart.y(tick)})`}>
           <line x1={0} x2={chart.x.range()[1]} />
-          <text x={-6} dy="0.32em">{formatValue(tick)}</text>
+          <text x={-6} dy="0.32em" textAnchor="end">{formatValue(tick)}</text>
         </g>)}
         {buckets.map((bucket, index) => {
           const x = chart.x(bucket.windowEnd) ?? 0;
@@ -72,18 +74,29 @@ export function MetricBarChart({ buckets, title, formatValue }: MetricBarChartPr
           const label = `${range}: ${formatValue(bucket.value)}`;
           return <g key={bucket.windowEnd}>
             <rect
+              className="metric-bucket-hit-target"
+              x={x}
+              y={0}
+              width={chart.x.bandwidth()}
+              height={chart.innerHeight}
+              tabIndex={0}
+              aria-label={label}
+              aria-describedby={tooltipId}
+              onBlur={() => setActiveWindowEnd(null)}
+              onFocus={() => setActiveWindowEnd(bucket.windowEnd)}
+              onMouseEnter={() => setActiveWindowEnd(bucket.windowEnd)}
+              onMouseLeave={() => setActiveWindowEnd(null)}
+            >
+              <title>{label}</title>
+            </rect>
+            <rect
               className="metric-bucket-bar"
               x={x}
               y={chart.y(bucket.value)}
               width={chart.x.bandwidth()}
               height={barHeight}
-              tabIndex={0}
-              aria-label={label}
-              aria-describedby={tooltipId}
-              onBlur={() => setActiveIndex(null)}
-              onFocus={() => setActiveIndex(index)}
-              onMouseEnter={() => setActiveIndex(index)}
-              onMouseLeave={() => setActiveIndex(null)}
+              pointerEvents="none"
+              aria-hidden="true"
             >
               <title>{label}</title>
             </rect>
