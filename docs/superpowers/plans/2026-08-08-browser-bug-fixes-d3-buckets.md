@@ -119,23 +119,23 @@
 - Modify: `web/src/pages/Dashboard.tsx`
 - Modify: `web/src/index.css`
 
-- [ ] **Step 1: Implement `MetricBarChart` around the bucket model.**
+- [x] **Step 1: Implement `MetricBarChart` around the bucket model.**
 
   Accept `MetricBucket[]`, an accessible metric title, and the current value formatter. Use a responsive SVG with D3 band and linear scales: the x-axis shows local Jakarta bucket start labels; y-axis starts at zero; each bar has a `<title>` and keyboard/focus-friendly tooltip text containing the full `[start, end)` Jakarta range and exact formatted value. Use `ResizeObserver` to redraw to available card width and clean it up on unmount.
 
-- [ ] **Step 2: Preserve the dashboard's snapshot upsert contract.**
+- [x] **Step 2: Preserve the dashboard's snapshot upsert contract.**
 
   Keep `Dashboard.tsx` replacing a received window stat by `(metric, scope, window_end)`, capped to the recent retained history. Do not append repeat emissions as extra data points. Continue handling daily stats separately.
 
-- [ ] **Step 3: Advance inactive buckets in the browser.**
+- [x] **Step 3: Advance inactive buckets in the browser.**
 
   Add a five-second `now` state tick in Dashboard. For every window metric, pass its selected snapshots and `now` through `metricBuckets`; this makes an empty new bucket visible and zero-valued even if Flink emits nothing in that interval. Keep daily cards as their existing daily-cumulative display.
 
-- [ ] **Step 4: Replace the inline flex-bar `MetricChart`.**
+- [x] **Step 4: Replace the inline flex-bar `MetricChart`.**
 
   Remove the old `.metric-chart`/`.metric-bar` rendering and use `MetricBarChart` for count, top-product count, and revenue window cards. Keep metric-card headline values, but label the five-minute value as the current aligned bucket. Update the Level 2 explanatory text to state: five-minute aligned windows update every five seconds; daily totals reset at Jakarta midnight.
 
-- [ ] **Step 5: Add chart styles and manual rendering checks.**
+- [x] **Step 5: Add chart styles and manual rendering checks.**
 
   Add bounded SVG, axis, hover/focus, and tooltip CSS without disturbing CEP chart styles. Run the frontend build, then inspect the dashboard at desktop and narrow width to ensure labels remain legible and no chart leaks a resize observer.
 
