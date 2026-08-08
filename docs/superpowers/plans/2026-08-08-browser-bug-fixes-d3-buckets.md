@@ -203,22 +203,22 @@
 **Files:**
 - Modify only if verification exposes a defect; otherwise none.
 
-- [ ] **Step 1: Run the complete frontend quality gate.**
+- [x] **Step 1: Run the complete frontend quality gate.**
 
   Run all Node test files (including existing Jakarta and CEP tests), `npm run lint`, and `npm run build` from `web/`.
 
-- [ ] **Step 2: Run backend suites.**
+- [x] **Step 2: Run backend suites.**
 
   Run `go test ./... -race -v` for `app/`, then `mvn -B clean verify` for `flink/` using the established containerized Maven command if the local JDK/Maven setup is unavailable.
 
-- [ ] **Step 3: Rebuild and perform the live smoke test.**
+- [x] **Step 3: Rebuild and perform the live smoke test.**
 
   Rebuild/redeploy the affected application and Level 2 jobs with the existing Docker Compose workflow. Publish or create events in one window and verify one live-feed row per `event_id`; wait for a five-second update and verify the active bar is replaced rather than duplicated; cross a five-minute boundary and verify the old value, an explicit zero gap when applicable, and a new bucket.
 
-- [ ] **Step 4: Perform the approved browser acceptance checks.**
+- [x] **Step 4: Perform the approved browser acceptance checks.**
 
   Confirm D3 hover exposes each time range/value, event feed remains bounded after repeat messages, `Cart: N items` is the quantity total, route mismatches redirect before loading role UI, and a reload in the same tab retains the session while a new tab does not.
 
-- [ ] **Step 5: Review the diff before handoff.**
+- [x] **Step 5: Review the diff before handoff.**
 
   Compare all edits against the approved design, check that no placeholder chart or temporary timing constant remains, rerun the relevant failed-before tests, then record verification evidence in the handoff/PR description.
