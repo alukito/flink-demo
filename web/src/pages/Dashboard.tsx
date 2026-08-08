@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { useEvents, isEventEnvelope, isWindowStat, type DashboardMessage, type EventEnvelope, type MetricName, type WindowStat } from '../context/EventContext';
 import { createSession } from '../api/client';
+import { MetricBarChart } from '../components/MetricBarChart';
 import {
   jakartaDayForWindowEnd,
   jakartaDateKey,
@@ -19,6 +20,7 @@ import {
   type DeliveryDuration,
   type CepAlert,
 } from '../lib/cepAlerts';
+import { metricBuckets } from '../lib/metricBuckets';
 
 const METRICS: Array<{ name: MetricName; label: string; window: boolean; daily: boolean; rupiah?: boolean }> = [
   { name: 'listings_count', label: 'Listings', window: true, daily: false },
@@ -37,13 +39,6 @@ function formatValue(value: number | undefined, rupiah = false): string {
 
 function EventRow({ event }: { event: EventEnvelope }) {
   return <div className="event-row"><span>{new Date(event.timestamp).toLocaleTimeString()}</span><strong>{event.event_type}</strong><span>{event.actor_id}</span><span>{JSON.stringify(event.payload)}</span></div>;
-}
-
-function MetricChart({ points, rupiah }: { points: WindowStat[]; rupiah?: boolean }) {
-  const max = Math.max(1, ...points.map((point) => point.value));
-  return <div className="metric-chart" aria-label="Sliding window history">
-    {points.length === 0 ? <span className="empty-chart">Waiting for a window…</span> : points.map((point) => <div key={point.window_end} className="metric-bar" title={`${new Date(point.window_end).toLocaleTimeString()} — ${formatValue(point.value, rupiah)}`} style={{ height: `${Math.max(8, point.value / max * 1e2)}%` }} />)}
-  </div>;
 }
 
 function AlertCountChart({ points, label }: { points: AlertBucket[]; label: string }) {
@@ -66,6 +61,7 @@ export default function Dashboard() {
   const [stats, setStats] = useState<WindowStat[]>([]);
   const [alerts, setAlerts] = useState<CepAlert[]>([]);
   const [jakartaDay, setJakartaDay] = useState(() => jakartaDateKey(new Date()));
+  const [now, setNow] = useState(() => new Date());
   const onMessage = useCallback((message: DashboardMessage) => {
     const cepAlert = readCepAlertMessage(message);
     if (cepAlert !== undefined) {
@@ -104,6 +100,11 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 5_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
     const prune = () => setAlerts((previous) => retainRecentAlerts(previous));
     const timer = window.setInterval(prune, 60_000);
     return () => window.clearInterval(timer);
@@ -120,17 +121,18 @@ export default function Dashboard() {
   return <main className="dashboard">
     <header className="dashboard-header"><h1>Stream Processing Dashboard</h1><div><span className={connected ? 'connection connected' : 'connection'}>{connected ? 'Connected' : dashToken ? 'Reconnecting…' : 'Connecting…'}</span><button onClick={() => { clearEvents(); setStats([]); setAlerts([]); }}>Clear</button></div></header>
     <section><h2>Level 1 — Live Event Feed</h2><p>Raw Kafka events, forwarded without stateful processing.</p><div className="event-feed">{events.length === 0 ? <div className="empty">Waiting for events…</div> : events.map((event) => <EventRow key={event.event_id} event={event} />)}</div></section>
-    <section><h2>Level 2 — Stateful Aggregations</h2><p>Five-minute windows slide every five seconds; daily totals reset at Jakarta midnight (WIB).</p><div className="metric-grid">{METRICS.map((metric) => {
+    <section><h2>Level 2 — Stateful Aggregations</h2><p>Five-minute aligned windows update every five seconds; daily totals reset at Jakarta midnight (WIB).</p><div className="metric-grid">{METRICS.map((metric) => {
       const values = grouped[metric.name];
       const windows = values.filter((item) => item.scope === 'window');
-      const latestWindow = windows[windows.length - 1];
+      const buckets = metric.window ? metricBuckets(windows, now) : [];
+      const activeBucket = buckets[buckets.length - 1];
       const daily = values.find(
         (item) =>
           item.scope === 'daily' &&
           jakartaDayForWindowEnd(item.window_end) === jakartaDay,
       );
-      const topName = metric.name === 'top_product' ? latestWindow?.detail.name : undefined;
-      return <article className="metric-card" key={metric.name}><h3>{metric.label}</h3><div className="metric-values"><div><span>5 min</span><strong>{formatValue(latestWindow?.value, metric.rupiah)}</strong></div><div><span>Today</span><strong>{formatValue(daily?.value, metric.rupiah)}</strong></div></div>{topName && <p className="metric-detail">{topName}</p>}{metric.window ? <MetricChart points={windows} rupiah={metric.rupiah} /> : <div className="metric-chart"><span className="empty-chart">Daily cumulative</span></div>}</article>;
+      const topName = metric.name === 'top_product' ? activeBucket?.detail.name : undefined;
+      return <article className="metric-card" key={metric.name}><h3>{metric.label}</h3><div className="metric-values"><div><span>Current 5 min</span><strong>{metric.window ? formatValue(activeBucket?.value, metric.rupiah) : '—'}</strong></div><div><span>Today</span><strong>{formatValue(daily?.value, metric.rupiah)}</strong></div></div>{topName && <p className="metric-detail">{topName}</p>}{metric.window ? <MetricBarChart buckets={buckets} title={`${metric.label} five-minute aligned-window history`} formatValue={(value) => formatValue(value, metric.rupiah)} /> : <div className="metric-chart"><span className="empty-chart">Daily cumulative</span></div>}</article>;
     })}</div></section>
     <section><h2>Level 3 — CEP Alert History</h2><p>Immutable alert facts retained in this dashboard for the last eight hours.</p><div className="cep-grid">
       <article className="metric-card"><h3>Abandoned carts</h3><p className="cep-card-note">Count by ten-minute bucket</p><AlertCountChart points={abandonedCartBuckets} label="Abandoned carts" /></article>

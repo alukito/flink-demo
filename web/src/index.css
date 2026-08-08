@@ -52,6 +52,14 @@ input {
 .metric-values span { color: #6b7280; font-size: 12px; }
 .metric-values strong { font-size: 22px; }
 .metric-detail { height: 20px; color: #7c3aed; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.metric-bucket-chart { position: relative; min-width: 0; }
+.metric-bucket-chart-svg { display: block; width: 100%; height: auto; min-height: 150px; overflow: visible; }
+.metric-bucket-axis { stroke: #9ca3af; }
+.metric-bucket-y-tick line { stroke: #e5e7eb; stroke-dasharray: 2 2; }
+.metric-bucket-y-tick text, .metric-bucket-x-label { fill: #6b7280; font-size: 9px; }
+.metric-bucket-bar { fill: #2563eb; cursor: pointer; outline: none; }
+.metric-bucket-bar:hover, .metric-bucket-bar:focus { fill: #1d4ed8; stroke: #172554; stroke-width: 2px; }
+.metric-bucket-tooltip { display: block; min-height: 18px; margin-top: 4px; color: #374151; font-size: 12px; line-height: 18px; }
 .metric-chart { height: 90px; display: flex; align-items: flex-end; gap: 3px; padding-top: 10px; border-bottom: 1px solid #d1d5db; }
 .metric-bar { flex: 1; min-width: 3px; max-width: 14px; border-radius: 3px 3px 0 0; background: linear-gradient(#60a5fa, #2563eb); }
 .empty-chart { margin: auto; color: #9ca3af; font-size: 12px; }
