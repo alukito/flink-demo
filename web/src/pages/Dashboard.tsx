@@ -21,6 +21,7 @@ import {
   type CepAlert,
 } from '../lib/cepAlerts';
 import { metricBuckets } from '../lib/metricBuckets';
+import { requestFreshDashboardToken } from '../lib/dashboardToken';
 
 const METRICS: Array<{ name: MetricName; label: string; window: boolean; daily: boolean; rupiah?: boolean }> = [
   { name: 'listings_count', label: 'Listings', window: true, daily: false },
@@ -57,7 +58,7 @@ function DurationChart({ points }: { points: DeliveryDuration[] }) {
 
 export default function Dashboard() {
   const { events, addEvent, clearEvents } = useEvents();
-  const [dashToken, setDashToken] = useState<string | null>(() => localStorage.getItem('dash_token'));
+  const [dashToken, setDashToken] = useState<string | null>(null);
   const [stats, setStats] = useState<WindowStat[]>([]);
   const [alerts, setAlerts] = useState<CepAlert[]>([]);
   const [jakartaDay, setJakartaDay] = useState(() => jakartaDateKey(new Date()));
@@ -82,9 +83,19 @@ export default function Dashboard() {
   const { connected } = useWebSocket<DashboardMessage>(onMessage, dashToken);
 
   useEffect(() => {
-    if (dashToken) return;
-    createSession(`dashboard-${Math.random().toString(36).slice(2, 8)}`, 'dashboard').then((response) => { localStorage.setItem('dash_token', response.token); setDashToken(response.token); }).catch((error) => console.error('[dashboard] failed to create session', error));
-  }, [dashToken]);
+    let disposed = false;
+    const name = `dashboard-${Math.random().toString(36).slice(2, 8)}`;
+    requestFreshDashboardToken(localStorage, createSession, name)
+      .then((token) => {
+        if (!disposed) setDashToken(token);
+      })
+      .catch((error) => {
+        if (!disposed) console.error('[dashboard] failed to create session', error);
+      });
+    return () => {
+      disposed = true;
+    };
+  }, []);
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>;

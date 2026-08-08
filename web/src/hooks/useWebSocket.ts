@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useSession } from '../context/SessionContext';
 import type { EventEnvelope } from '../context/EventContext';
-import { shouldReconnect } from '../lib/webSocketLifecycle';
+import { resolveWebSocketToken, shouldReconnect } from '../lib/webSocketLifecycle';
 
 /**
  * useWebSocket connects to the server's WebSocket endpoint and calls
@@ -13,7 +13,7 @@ import { shouldReconnect } from '../lib/webSocketLifecycle';
  */
 export function useWebSocket<T = EventEnvelope>(onEvent: (event: T) => void, overrideToken?: string | null) {
   const { token: sessionToken } = useSession();
-  const token = overrideToken ?? sessionToken;
+  const token = resolveWebSocketToken(overrideToken, sessionToken);
   const [connected, setConnected] = useState(false);
   const onEventRef = useRef(onEvent);
   onEventRef.current = onEvent;
