@@ -32,23 +32,23 @@
 - Create: `web/src/lib/session.test.ts`
 - Modify: `web/package.json`
 
-- [ ] **Step 1: Write failing tests for bounded event deduplication.**
+- [x] **Step 1: Write failing tests for bounded event deduplication.**
 
   Add tests for `appendUniqueEvent(events, event, maxEvents)` that verify a new `event_id` is prepended, a repeated `event_id` leaves the list unchanged, and the retained feed never exceeds 100 entries. Use event objects shaped like `EventEnvelope`, including a duplicate payload where practical so the comparison is explicitly by ID.
 
-- [ ] **Step 2: Write failing tests for total item quantities.**
+- [x] **Step 2: Write failing tests for total item quantities.**
 
   Test `cartItemCount(items)` with multiple product lines and repeated additions consolidated into a quantity, e.g. quantities `3` and `1` produce `4`, not `2`.
 
-- [ ] **Step 3: Write failing tests for role-session validation.**
+- [x] **Step 3: Write failing tests for role-session validation.**
 
   Keep browser-storage calls behind a small helper or injected `Storage`-like interface. Test that only a complete `(token, name, role)` record with the requested role is authorized; missing fields or a different role are rejected. Test both reading and clearing the three session keys.
 
-- [ ] **Step 4: Implement the helpers minimally.**
+- [x] **Step 4: Implement the helpers minimally.**
 
   In `eventFeed.ts`, export `MAX_LIVE_EVENTS = 100` and an immutable `appendUniqueEvent` that scans only the already bounded list before prepending. In `cart.ts`, export a reducer-based `cartItemCount`. In `session.ts`, centralize `readSession`, `writeSession`, `clearSession`, and `hasRequiredRole`, using `sessionStorage` and validating the `Role` union rather than casting arbitrary strings.
 
-- [ ] **Step 5: Run the new focused tests.**
+- [x] **Step 5: Run the new focused tests.**
 
   Run the new test files with Node's test runner and confirm the duplicate event, total item count, and wrong-role cases pass before wiring React to them.
 
