@@ -148,23 +148,23 @@
 - Modify: `flink/src/test/java/com/flinkdemo/level2/MetricFunctionsTest.java`
 - Modify: `flink/src/test/java/com/flinkdemo/level2/MetricPipelineMiniClusterTest.java`
 
-- [ ] **Step 1: Write failing unit tests for aligned-window behavior.**
+- [x] **Step 1: Write failing unit tests for aligned-window behavior.**
 
   Put the production size and update interval in `MetricWindowing` (`Time.minutes(5)` and `Time.seconds(5)`), but test their observable window behavior rather than asserting literal constant values: `07:01` and `07:03` map to a window ending `07:05`; exact `07:10` maps to `07:15`. Extend the `CountWindowResult` test so the emitted `window_end` contract remains explicit.
 
-- [ ] **Step 2: Write a bounded streaming integration test.**
+- [x] **Step 2: Write a bounded streaming integration test.**
 
   Add a deterministic test-stream/source fixture with a short test-only tumbling size and continuous trigger interval. It must verify repeated early firings have the same `window_end` while their aggregate grows, and that the next non-overlapping window has a new `window_end`. Keep the production five-minute constants untouched; the short values exist only to make the test fast.
 
-- [ ] **Step 3: Implement reusable window construction.**
+- [x] **Step 3: Implement reusable window construction.**
 
   In `MetricWindowing`, provide the shared `windowAll` configuration used by count and top-product metrics: `TumblingProcessingTimeWindows.of(WINDOW_SIZE)` followed by `ContinuousProcessingTimeTrigger.of(UPDATE_INTERVAL)`. Provide an overload/parameters suitable for the short integration test without duplicating production pipeline logic.
 
-- [ ] **Step 4: Migrate both Level 2 window branches.**
+- [x] **Step 4: Migrate both Level 2 window branches.**
 
   In `MetricJob.build`, replace both `SlidingProcessingTimeWindows.of(Time.minutes(5), Time.seconds(5))` calls with the shared tumbling configuration. Apply it identically to the aggregate and top-product process branches. Leave `DailyAggregateFunction` and Kafka source/sink behavior unchanged.
 
-- [ ] **Step 5: Run focused Flink tests.**
+- [x] **Step 5: Run focused Flink tests.**
 
   Run `MetricFunctionsTest`, `MetricWindowingTest`, and `MetricPipelineMiniClusterTest`. Confirm no sliding-window import remains and the tested repeated emissions share one `window_end` until the aligned boundary is crossed.
 
