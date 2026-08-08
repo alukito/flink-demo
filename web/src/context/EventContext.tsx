@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
 import type { CepAlert } from '../lib/cepAlerts';
+import { appendUniqueEvent } from '../lib/eventFeed';
 
 export type { CepAlert } from '../lib/cepAlerts';
 
@@ -41,13 +42,11 @@ interface EventState {
 
 const EventContext = createContext<EventState | undefined>(undefined);
 
-const MAX_EVENTS = 100;
-
 export function EventProvider({ children }: { children: ReactNode }) {
   const [events, setEvents] = useState<EventEnvelope[]>([]);
 
   const addEvent = useCallback((event: EventEnvelope) => {
-    setEvents((prev) => [event, ...prev].slice(0, MAX_EVENTS));
+    setEvents((prev) => appendUniqueEvent(prev, event));
   }, []);
 
   const clearEvents = useCallback(() => {
