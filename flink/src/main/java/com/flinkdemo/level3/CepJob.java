@@ -25,6 +25,7 @@ public final class CepJob {
 
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         env.setParallelism(1);
+        env.getConfig().setAutoWatermarkInterval(Duration.ofSeconds(1).toMillis());
         env.enableCheckpointing(Duration.ofSeconds(30).toMillis());
         env.setRestartStrategy(RestartStrategies.fixedDelayRestart(3, Duration.ofSeconds(10)));
 

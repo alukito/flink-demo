@@ -32,6 +32,26 @@ class DeliveryCompletedPatternTest {
     }
 
     @Test
+    void emitsElapsedSecondsForTheObservedBrowserLifecycleTimeline() throws Exception {
+        List<CepAlert> alerts = run(List.of(
+            event("checkout-browser", "cart.checkout", "0962f0b6-527a-475e-8fd8-d90a7bc4ee3f", "2026-08-08T12:50:40Z"),
+            event("delivery-browser", "shipment.delivered", "0962f0b6-527a-475e-8fd8-d90a7bc4ee3f", "2026-08-08T12:52:35Z")));
+
+        assertEquals(1, alerts.size());
+        assertEquals(115L, alerts.get(0).getDetail().get("elapsed_seconds"));
+    }
+
+    @Test
+    void reordersReverseArrivalUsingEventTimestamps() throws Exception {
+        List<CepAlert> alerts = run(List.of(
+            event("delivery-browser", "shipment.delivered", "0962f0b6-527a-475e-8fd8-d90a7bc4ee3f", "2026-08-08T12:52:35Z"),
+            event("checkout-browser", "cart.checkout", "0962f0b6-527a-475e-8fd8-d90a7bc4ee3f", "2026-08-08T12:50:40Z")));
+
+        assertEquals(1, alerts.size());
+        assertEquals(115L, alerts.get(0).getDetail().get("elapsed_seconds"));
+    }
+
+    @Test
     void emitsNumericElapsedSecondsForDeliveryWithinTheOperationalRetentionHorizon() throws Exception {
         List<CepAlert> alerts = run(List.of(
             event("checkout-1", "cart.checkout", "order-1", "2026-08-01T10:00:00Z"),
