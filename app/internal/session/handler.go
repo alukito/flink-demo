@@ -2,10 +2,10 @@ package session
 
 import (
 	"encoding/json"
-	"errors"
 	"log/slog"
 	"net/http"
 
+	"github.com/google/uuid"
 	"github.com/kuang/flink-demo/internal/auth"
 )
 
@@ -26,6 +26,7 @@ type createSessionRequest struct {
 }
 
 type createSessionResponse struct {
+	ID    string `json:"id"`
 	Token string `json:"token"`
 	Name  string `json:"name"`
 	Role  string `json:"role"`
@@ -49,29 +50,26 @@ func (h *Handler) CreateSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.store.Create(req.Name, req.Role); err != nil {
-		if errors.Is(err, ErrDuplicateName) {
-			http.Error(w, "name already taken", http.StatusConflict)
-			return
-		}
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-
-	token, err := h.jwtMgr.Sign(req.Name, req.Role)
+	session := Session{ID: uuid.New().String(), Name: req.Name, Role: req.Role}
+	token, err := h.jwtMgr.Sign(session.ID, session.Name, session.Role)
 	if err != nil {
 		slog.Error("failed to sign JWT", "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	if err := h.store.Create(session); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
 
-	slog.Info("session created", "name", req.Name, "role", req.Role)
+	slog.Info("session created", "id", session.ID, "name", session.Name, "role", session.Role)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(createSessionResponse{
+		ID:    session.ID,
 		Token: token,
-		Name:  req.Name,
-		Role:  req.Role,
+		Name:  session.Name,
+		Role:  session.Role,
 	})
 }

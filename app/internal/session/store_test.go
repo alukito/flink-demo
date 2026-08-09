@@ -9,20 +9,27 @@ import (
 
 func TestStoreCreate(t *testing.T) {
 	s := NewStore()
-	err := s.Create("alice", "buyer")
+	err := s.Create(Session{ID: "session-1", Name: "alice", Role: "buyer"})
 	require.NoError(t, err)
 }
 
-func TestStoreDuplicateName(t *testing.T) {
+func TestStoreAllowsDuplicateNames(t *testing.T) {
 	s := NewStore()
-	require.NoError(t, s.Create("alice", "buyer"))
-	err := s.Create("alice", "seller")
-	assert.ErrorIs(t, err, ErrDuplicateName)
+	require.NoError(t, s.Create(Session{ID: "session-1", Name: "alex", Role: "buyer"}))
+	err := s.Create(Session{ID: "session-2", Name: "alex", Role: "seller"})
+	assert.NoError(t, err)
+}
+
+func TestStoreRejectsDuplicateIDs(t *testing.T) {
+	s := NewStore()
+	require.NoError(t, s.Create(Session{ID: "session-1", Name: "alex", Role: "buyer"}))
+	err := s.Create(Session{ID: "session-1", Name: "alex", Role: "seller"})
+	assert.ErrorIs(t, err, ErrDuplicateID)
 }
 
 func TestStoreExists(t *testing.T) {
 	s := NewStore()
-	s.Create("alice", "buyer")
-	assert.True(t, s.Exists("alice"))
-	assert.False(t, s.Exists("bob"))
+	s.Create(Session{ID: "session-1", Name: "alice", Role: "buyer"})
+	assert.True(t, s.Exists("session-1"))
+	assert.False(t, s.Exists("session-2"))
 }

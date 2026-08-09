@@ -5,7 +5,7 @@ import (
 	"sync"
 )
 
-var ErrDuplicateName = errors.New("session name already taken")
+var ErrDuplicateID = errors.New("session ID already exists")
 
 var validRoles = map[string]bool{
 	"buyer":     true,
@@ -16,6 +16,7 @@ var validRoles = map[string]bool{
 
 // Session holds a user's session state.
 type Session struct {
+	ID   string
 	Name string
 	Role string
 }
@@ -31,22 +32,22 @@ func NewStore() *Store {
 	return &Store{sessions: make(map[string]*Session)}
 }
 
-// Create adds a new session. Returns ErrDuplicateName if the name is taken.
-func (s *Store) Create(name, role string) error {
+// Create adds a new session. Returns ErrDuplicateID if the ID is already in use.
+func (s *Store) Create(session Session) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, exists := s.sessions[name]; exists {
-		return ErrDuplicateName
+	if _, exists := s.sessions[session.ID]; exists {
+		return ErrDuplicateID
 	}
-	s.sessions[name] = &Session{Name: name, Role: role}
+	s.sessions[session.ID] = &session
 	return nil
 }
 
-// Exists checks whether a session with the given name exists.
-func (s *Store) Exists(name string) bool {
+// Exists checks whether a session with the given ID exists.
+func (s *Store) Exists(id string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	_, exists := s.sessions[name]
+	_, exists := s.sessions[id]
 	return exists
 }
 

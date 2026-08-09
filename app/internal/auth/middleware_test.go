@@ -11,12 +11,13 @@ import (
 
 func TestMiddlewareValidToken(t *testing.T) {
 	mgr := NewJWTManager("test-secret")
-	token, _ := mgr.Sign("alice", "buyer")
+	token, _ := mgr.Sign("6f4b7fca-24f8-4233-bf7a-0f56737a847c", "alice", "buyer")
 
 	called := false
 	handler := mgr.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		called = true
 		claims := r.Context().Value(ClaimsKey).(*Claims)
+		assert.Equal(t, "6f4b7fca-24f8-4233-bf7a-0f56737a847c", claims.ID)
 		assert.Equal(t, "alice", claims.Name)
 		assert.Equal(t, "buyer", claims.Role)
 		w.WriteHeader(200)

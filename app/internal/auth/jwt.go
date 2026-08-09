@@ -9,6 +9,7 @@ import (
 
 // Claims holds the JWT custom claims for a session.
 type Claims struct {
+	ID   string `json:"id"`
 	Name string `json:"name"`
 	Role string `json:"role"`
 	jwt.RegisteredClaims
@@ -24,9 +25,10 @@ func NewJWTManager(secret string) *JWTManager {
 	return &JWTManager{secret: []byte(secret)}
 }
 
-// Sign creates a signed JWT token for the given name and role.
-func (m *JWTManager) Sign(name, role string) (string, error) {
+// Sign creates a signed JWT token for the given session identity, name, and role.
+func (m *JWTManager) Sign(id, name, role string) (string, error) {
 	claims := Claims{
+		ID:   id,
 		Name: name,
 		Role: role,
 		RegisteredClaims: jwt.RegisteredClaims{

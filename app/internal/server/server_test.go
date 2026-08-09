@@ -67,6 +67,11 @@ func TestSessionEndpointCreatesToken(t *testing.T) {
 	srv.handler.ServeHTTP(rec, req)
 
 	assert.Equal(t, http.StatusCreated, rec.Code)
+	var resp struct {
+		ID string `json:"id"`
+	}
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&resp))
+	assert.NotEmpty(t, resp.ID)
 }
 
 func TestProtectedRouteWithoutToken(t *testing.T) {
