@@ -33,6 +33,6 @@ class EventDeduplicatorTest {
 
     private EventEnvelope event(String eventId) throws Exception {
         return new EventEnvelope(
-            eventId, "cart.checkout", "buyer-1", "buyer", "2026-08-01T10:00:00Z", mapper.readTree("{}"));
+            eventId, "cart.checkout", "buyer-1", "Buyer", "buyer", "2026-08-01T10:00:00Z", mapper.readTree("{}"));
     }
 }

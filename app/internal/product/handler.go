@@ -48,21 +48,24 @@ func (h *Handler) AddProduct(w http.ResponseWriter, r *http.Request) {
 	}
 
 	p := Product{
-		ID:       uuid.New().String(),
-		Name:     req.Name,
-		Price:    req.Price,
-		Quantity: req.Quantity,
-		SellerID: claims.Name,
-		ListedAt: time.Now(),
+		ID:         uuid.New().String(),
+		Name:       req.Name,
+		Price:      req.Price,
+		Quantity:   req.Quantity,
+		SellerID:   claims.ID,
+		SellerName: claims.Name,
+		ListedAt:   time.Now(),
 	}
 	h.products.Add(p)
 
 	// Produce product.listed event
-	ev := event.NewEvent("product.listed", claims.Name, "seller", map[string]any{
-		"product_id": p.ID,
-		"name":       p.Name,
-		"price":      p.Price,
-		"quantity":   p.Quantity,
+	ev := event.NewEvent("product.listed", claims.ID, claims.Name, claims.Role, map[string]any{
+		"product_id":  p.ID,
+		"name":        p.Name,
+		"price":       p.Price,
+		"quantity":    p.Quantity,
+		"seller_id":   p.SellerID,
+		"seller_name": p.SellerName,
 	})
 	if err := h.producer.Write(r.Context(), "product.listed", ev); err != nil {
 		slog.Error("failed to produce product.listed event", "error", err, "product_id", p.ID)
@@ -78,7 +81,7 @@ func (h *Handler) AddProduct(w http.ResponseWriter, r *http.Request) {
 // ListProducts handles GET /api/seller/products (returns seller's own products).
 func (h *Handler) ListProducts(w http.ResponseWriter, r *http.Request) {
 	claims := r.Context().Value(auth.ClaimsKey).(*auth.Claims)
-	products := h.products.BySeller(claims.Name)
+	products := h.products.BySeller(claims.ID)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(products)
@@ -87,7 +90,7 @@ func (h *Handler) ListProducts(w http.ResponseWriter, r *http.Request) {
 // ListOrders handles GET /api/seller/orders (returns orders for this seller's products).
 func (h *Handler) ListOrders(w http.ResponseWriter, r *http.Request) {
 	claims := r.Context().Value(auth.ClaimsKey).(*auth.Claims)
-	orders := h.orders.BySeller(claims.Name)
+	orders := h.orders.BySeller(claims.ID)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(orders)
@@ -104,7 +107,7 @@ func (h *Handler) ConfirmOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := h.orders.Confirm(orderID, claims.Name)
+	err := h.orders.Confirm(orderID, claims.ID)
 	if err != nil {
 		switch {
 		case errors.Is(err, order.ErrWrongSeller):
@@ -118,9 +121,12 @@ func (h *Handler) ConfirmOrder(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Produce order.confirmed event
-	ev := event.NewEvent("order.confirmed", claims.Name, "seller", map[string]any{
-		"order_id": orderID,
-		"buyer_id": o.BuyerID,
+	ev := event.NewEvent("order.confirmed", claims.ID, claims.Name, claims.Role, map[string]any{
+		"order_id":    orderID,
+		"buyer_id":    o.BuyerID,
+		"buyer_name":  o.BuyerName,
+		"seller_id":   o.SellerID,
+		"seller_name": o.SellerName,
 	})
 	if err := h.producer.Write(r.Context(), "order.confirmed", ev); err != nil {
 		slog.Error("failed to produce order.confirmed event", "error", err, "order_id", orderID)

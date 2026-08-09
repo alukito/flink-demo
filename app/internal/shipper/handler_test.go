@@ -25,7 +25,7 @@ func newTestHandler(t *testing.T) (*Handler, *order.Store) {
 }
 
 func claimsContext(name, role string) context.Context {
-	claims := &auth.Claims{Name: name, Role: role}
+	claims := &auth.Claims{ID: name, Name: name, Role: role}
 	return context.WithValue(context.Background(), auth.ClaimsKey, claims)
 }
 
@@ -123,11 +123,26 @@ func TestPickJobNotConfirmed(t *testing.T) {
 func TestDeliverJobSuccess(t *testing.T) {
 	h, orderStore := newTestHandler(t)
 	orderStore.Create(order.Order{ID: "o1", BuyerID: "b1", SellerID: "s1", Status: order.StatusConfirmed})
-	require.NoError(t, orderStore.Pick("o1", "shipper1"))
+	require.NoError(t, orderStore.Pick("o1", "shipper1", "shipper1"))
 
 	req := httptest.NewRequest("POST", "/api/shipper/jobs/o1/deliver", nil)
 	req.SetPathValue("id", "o1")
 	req = req.WithContext(claimsContext("shipper1", "shipper"))
+	rec := httptest.NewRecorder()
+	h.DeliverJob(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, order.StatusDelivered, orderStore.Get("o1").Status)
+}
+
+func TestDeliverJobUsesShipperUUIDOwnership(t *testing.T) {
+	h, orderStore := newTestHandler(t)
+	orderStore.Create(order.Order{ID: "o1", BuyerID: "b1", SellerID: "s1", Status: order.StatusConfirmed})
+	require.NoError(t, orderStore.Pick("o1", "shipper-a", "alex"))
+
+	req := httptest.NewRequest("POST", "/api/shipper/jobs/o1/deliver", nil)
+	req.SetPathValue("id", "o1")
+	req = req.WithContext(context.WithValue(context.Background(), auth.ClaimsKey, &auth.Claims{ID: "shipper-a", Name: "alex", Role: "shipper"}))
 	rec := httptest.NewRecorder()
 	h.DeliverJob(rec, req)
 

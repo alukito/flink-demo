@@ -7,12 +7,13 @@ import (
 
 // Product represents a product listed by a seller.
 type Product struct {
-	ID       string    `json:"id"`
-	Name     string    `json:"name"`
-	Price    int       `json:"price"`
-	Quantity int       `json:"quantity"`
-	SellerID string    `json:"seller_id"`
-	ListedAt time.Time `json:"listed_at"`
+	ID         string    `json:"id"`
+	Name       string    `json:"name"`
+	Price      int       `json:"price"`
+	Quantity   int       `json:"quantity"`
+	SellerID   string    `json:"seller_id"`
+	SellerName string    `json:"seller_name"`
+	ListedAt   time.Time `json:"listed_at"`
 }
 
 // Store is an in-memory product store with a derived index by seller.

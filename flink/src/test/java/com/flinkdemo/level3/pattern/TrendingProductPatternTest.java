@@ -115,6 +115,7 @@ class TrendingProductPatternTest {
             eventId,
             "cart.item.added",
             actorId,
+            "Buyer",
             "buyer",
             timestamp,
             mapper.readTree("{\"product_id\":\"product-1\",\"product_name\":\"Demo Product\"}"));

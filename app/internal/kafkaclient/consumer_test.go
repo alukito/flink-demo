@@ -27,7 +27,7 @@ func (r *recordingBroadcaster) BroadcastCEPAlertRaw(data []byte) {
 func TestConsumerForwardsInputAsTypedEventAndFlinkOutputAsRawJSON(t *testing.T) {
 	recorder := &recordingBroadcaster{}
 	consumer := NewConsumer("localhost:9092", recorder)
-	input, _ := json.Marshal(event.NewEvent("product.listed", "seller", "seller", map[string]any{"product_id": "p1"}))
+	input, _ := json.Marshal(event.NewEvent("product.listed", "seller", "Seller", "seller", map[string]any{"product_id": "p1"}))
 	raw := []byte("{\n \"metric\":\"tx_count\", \"scope\":\"window\", \"window_end\":\"2026-07-18T10:05:00Z\", \"value\":7, \"detail\":{}\n}")
 	alert := []byte(`{"alert_id":"slow_delivery:o1","pattern":"slow_delivery","detected_at":"2026-08-01T10:07:00Z","detail":{"order_id":"o1"}}`)
 

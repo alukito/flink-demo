@@ -50,6 +50,7 @@ func cartItemPayload(cartID string, p *product.Product, quantity int) map[string
 		"product_id":   p.ID,
 		"product_name": p.Name,
 		"seller_id":    p.SellerID,
+		"seller_name":  p.SellerName,
 		"quantity":     quantity,
 	}
 }
@@ -82,7 +83,7 @@ func (h *Handler) AddToCart(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Produce cart.item.added event (for Flink CEP patterns)
-	ev := event.NewEvent("cart.item.added", claims.Name, "buyer", cartItemPayload(req.CartID, p, req.Quantity))
+	ev := event.NewEvent("cart.item.added", claims.ID, claims.Name, claims.Role, cartItemPayload(req.CartID, p, req.Quantity))
 	if err := h.producer.Write(r.Context(), "cart.item.added", ev); err != nil {
 		slog.Error("failed to produce cart.item.added event", "error", err)
 	}
@@ -146,6 +147,7 @@ func (h *Handler) Checkout(w http.ResponseWriter, r *http.Request) {
 	type sellerGroup struct {
 		items       []order.OrderItem
 		totalAmount int
+		sellerName  string
 	}
 	groups := make(map[string]*sellerGroup)
 
@@ -168,7 +170,7 @@ func (h *Handler) Checkout(w http.ResponseWriter, r *http.Request) {
 
 		g, ok := groups[p.SellerID]
 		if !ok {
-			g = &sellerGroup{}
+			g = &sellerGroup{sellerName: p.SellerName}
 			groups[p.SellerID] = g
 		}
 		g.items = append(g.items, order.OrderItem{
@@ -186,8 +188,10 @@ func (h *Handler) Checkout(w http.ResponseWriter, r *http.Request) {
 		orderID := uuid.New().String()
 		o := order.Order{
 			ID:              orderID,
-			BuyerID:         claims.Name,
+			BuyerID:         claims.ID,
+			BuyerName:       claims.Name,
 			SellerID:        sellerID,
+			SellerName:      g.sellerName,
 			Items:           g.items,
 			TotalAmount:     g.totalAmount,
 			ShippingAddress: req.ShippingAddress,
@@ -211,10 +215,13 @@ func (h *Handler) Checkout(w http.ResponseWriter, r *http.Request) {
 				"unit_price":   item.UnitPrice,
 			}
 		}
-		ev := event.NewEvent("cart.checkout", claims.Name, "buyer", map[string]any{
+		ev := event.NewEvent("cart.checkout", claims.ID, claims.Name, claims.Role, map[string]any{
 			"cart_id":          req.CartID,
 			"order_id":         orderID,
+			"buyer_id":         claims.ID,
+			"buyer_name":       claims.Name,
 			"seller_id":        sellerID,
+			"seller_name":      g.sellerName,
 			"items":            itemsPayload,
 			"total_amount":     g.totalAmount,
 			"shipping_address": req.ShippingAddress,
@@ -243,7 +250,7 @@ func (h *Handler) Checkout(w http.ResponseWriter, r *http.Request) {
 // ListOrders handles GET /api/buyer/orders (returns buyer's own orders).
 func (h *Handler) ListOrders(w http.ResponseWriter, r *http.Request) {
 	claims := r.Context().Value(auth.ClaimsKey).(*auth.Claims)
-	orders := h.orders.ByBuyer(claims.Name)
+	orders := h.orders.ByBuyer(claims.ID)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(orders)

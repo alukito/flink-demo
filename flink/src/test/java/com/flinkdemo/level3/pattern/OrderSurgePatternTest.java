@@ -103,6 +103,7 @@ class OrderSurgePatternTest {
             eventId,
             "cart.checkout",
             buyerId,
+            "Buyer",
             "buyer",
             timestamp,
             mapper.readTree("{}"));

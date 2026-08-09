@@ -16,9 +16,10 @@ class JsonEnvelopeTest {
 
     @Test
     void deserializesInputEnvelopeWithoutChangingRupiahIntegers() throws Exception {
-        String json = "{\"event_id\":\"e1\",\"event_type\":\"cart.checkout\",\"actor_id\":\"b1\",\"actor_role\":\"buyer\",\"timestamp\":\"2026-07-18T10:00:00Z\",\"payload\":{\"total_amount\":489000}}";
+        String json = "{\"event_id\":\"e1\",\"event_type\":\"cart.checkout\",\"actor_id\":\"b1\",\"actor_name\":\"Alex\",\"actor_role\":\"buyer\",\"timestamp\":\"2026-07-18T10:00:00Z\",\"payload\":{\"total_amount\":489000}}";
         EventEnvelope event = new EventEnvelopeSchema().deserialize(json.getBytes(StandardCharsets.UTF_8));
-        assertEquals("cart.checkout", event.getEventType());
+		assertEquals("cart.checkout", event.getEventType());
+		assertEquals("Alex", event.getActorName());
         assertEquals(489000L, event.getPayload().get("total_amount").longValue());
     }
 

@@ -26,7 +26,7 @@ class MetricFunctionsTest {
     private final ObjectMapper mapper = new ObjectMapper();
 
     private EventEnvelope event(String id, String type, String timestamp, String payload) throws Exception {
-        return new EventEnvelope(id, type, "actor", "buyer", timestamp, mapper.readTree(payload));
+        return new EventEnvelope(id, type, "actor", "Actor", "buyer", timestamp, mapper.readTree(payload));
     }
 
     @Test void definitionsMapEveryMetricToOneTopic() {

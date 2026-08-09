@@ -13,7 +13,7 @@ func TestProducerWriteSerializesEventAsJSON(t *testing.T) {
 	// We can't test against a real Kafka broker in a unit test,
 	// but we can verify the event is properly serialized to JSON
 	// by checking the message value that would be sent.
-	ev := event.NewEvent("product.listed", "seller1", "seller", map[string]any{
+	ev := event.NewEvent("product.listed", "seller1", "Seller", "seller", map[string]any{
 		"product_id": "p1",
 		"name":       "Widget",
 	})

@@ -26,11 +26,15 @@ func sampleOrder() Order {
 func TestStoreCreateAndGet(t *testing.T) {
 	s := NewStore()
 	o := sampleOrder()
+	o.BuyerName = "Alex"
+	o.SellerName = "Merchant"
 	s.Create(o)
 
 	got := s.Get("o1")
 	require.NotNil(t, got)
 	assert.Equal(t, "buyer1", got.BuyerID)
+	assert.Equal(t, "Alex", got.BuyerName)
+	assert.Equal(t, "Merchant", got.SellerName)
 	assert.Equal(t, StatusCheckout, got.Status)
 }
 
@@ -113,7 +117,7 @@ func TestStorePick(t *testing.T) {
 	s.Create(sampleOrder())
 	require.NoError(t, s.Confirm("o1", "seller1"))
 
-	err := s.Pick("o1", "shipper1")
+	err := s.Pick("o1", "shipper1", "shipper1")
 	require.NoError(t, err)
 
 	got := s.Get("o1")
@@ -128,11 +132,11 @@ func TestStorePickRaceCondition(t *testing.T) {
 	require.NoError(t, s.Confirm("o1", "seller1"))
 
 	// First pick succeeds
-	err1 := s.Pick("o1", "shipper1")
+	err1 := s.Pick("o1", "shipper1", "shipper1")
 	assert.NoError(t, err1)
 
 	// Second pick fails with conflict
-	err2 := s.Pick("o1", "shipper2")
+	err2 := s.Pick("o1", "shipper2", "shipper2")
 	assert.ErrorIs(t, err2, ErrInvalidTransition)
 }
 
@@ -140,7 +144,7 @@ func TestStorePickNotConfirmed(t *testing.T) {
 	s := NewStore()
 	s.Create(sampleOrder()) // status = checkout
 
-	err := s.Pick("o1", "shipper1")
+	err := s.Pick("o1", "shipper1", "shipper1")
 	assert.ErrorIs(t, err, ErrInvalidTransition)
 }
 
@@ -148,14 +152,26 @@ func TestStoreDeliver(t *testing.T) {
 	s := NewStore()
 	s.Create(sampleOrder())
 	require.NoError(t, s.Confirm("o1", "seller1"))
-	require.NoError(t, s.Pick("o1", "shipper1"))
+	require.NoError(t, s.Pick("o1", "shipper1", "Alex"))
 
 	err := s.Deliver("o1", "shipper1")
 	require.NoError(t, err)
 
 	got := s.Get("o1")
 	assert.Equal(t, StatusDelivered, got.Status)
+	assert.Equal(t, "Alex", got.PickedByName)
 	assert.False(t, got.DeliveredAt.IsZero())
+}
+
+func TestStoreRejectsDeliveryByAnotherShipper(t *testing.T) {
+	s := NewStore()
+	s.Create(sampleOrder())
+	require.NoError(t, s.Confirm("o1", "seller1"))
+	require.NoError(t, s.Pick("o1", "shipper-a", "alex"))
+
+	err := s.Deliver("o1", "shipper-b")
+	assert.ErrorIs(t, err, ErrWrongShipper)
+	assert.Equal(t, StatusPicked, s.Get("o1").Status)
 }
 
 func TestStoreDeliverNotPicked(t *testing.T) {
@@ -185,7 +201,7 @@ func TestStorePickConcurrentRace(t *testing.T) {
 		i := i
 		go func() {
 			defer wg.Done()
-			results[i] = s.Pick("o1", "shipper"+strconv.Itoa(i))
+			results[i] = s.Pick("o1", "shipper"+strconv.Itoa(i), "shipper")
 		}()
 	}
 	wg.Wait()

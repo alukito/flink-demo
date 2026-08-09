@@ -77,6 +77,7 @@ class AbandonedCartPatternTest {
             eventId,
             eventType,
             "buyer-1",
+            "Buyer",
             "buyer",
             timestamp,
             mapper.readTree("{\"cart_id\":\"" + cartId + "\"}"));

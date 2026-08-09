@@ -47,6 +47,7 @@ func (h *WSHandler) ServeWS(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	client := &Client{
+		ID:   claims.ID,
 		Name: claims.Name,
 		Role: claims.Role,
 		conn: conn,

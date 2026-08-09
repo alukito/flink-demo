@@ -21,6 +21,7 @@ var (
 	ErrNotFound          = errors.New("order not found")
 	ErrInvalidTransition = errors.New("invalid order status transition")
 	ErrWrongSeller       = errors.New("order does not belong to this seller")
+	ErrWrongShipper      = errors.New("order is not assigned to this shipper")
 )
 
 // OrderItem represents a line item in an order.
@@ -35,12 +36,15 @@ type OrderItem struct {
 type Order struct {
 	ID              string      `json:"id"`
 	BuyerID         string      `json:"buyer_id"`
+	BuyerName       string      `json:"buyer_name"`
 	SellerID        string      `json:"seller_id"`
+	SellerName      string      `json:"seller_name"`
 	Items           []OrderItem `json:"items"`
 	TotalAmount     int         `json:"total_amount"`
 	ShippingAddress string      `json:"shipping_address"`
 	Status          OrderStatus `json:"status"`
 	PickedBy        string      `json:"picked_by,omitempty"`
+	PickedByName    string      `json:"picked_by_name,omitempty"`
 	CreatedAt       time.Time   `json:"created_at"`
 	ConfirmedAt     time.Time   `json:"confirmed_at,omitempty"`
 	PickedAt        time.Time   `json:"picked_at,omitempty"`
@@ -152,7 +156,7 @@ func (s *Store) Confirm(orderID, sellerID string) error {
 // Pick transitions an order from "confirmed" to "picked".
 // Returns ErrInvalidTransition if the order is not in "confirmed" status
 // (e.g., already picked by another shipper).
-func (s *Store) Pick(orderID, shipperID string) error {
+func (s *Store) Pick(orderID, shipperID, shipperName string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	o, ok := s.orders[orderID]
@@ -164,6 +168,7 @@ func (s *Store) Pick(orderID, shipperID string) error {
 	}
 	s.updateStatus(o, StatusPicked)
 	o.PickedBy = shipperID
+	o.PickedByName = shipperName
 	o.PickedAt = time.Now()
 	return nil
 }
@@ -178,6 +183,9 @@ func (s *Store) Deliver(orderID, shipperID string) error {
 	}
 	if o.Status != StatusPicked {
 		return ErrInvalidTransition
+	}
+	if o.PickedBy != shipperID {
+		return ErrWrongShipper
 	}
 	s.updateStatus(o, StatusDelivered)
 	o.DeliveredAt = time.Now()

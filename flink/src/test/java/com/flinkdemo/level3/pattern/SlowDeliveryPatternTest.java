@@ -88,6 +88,7 @@ class SlowDeliveryPatternTest {
             eventId,
             eventType,
             "seller-1",
+            "Seller",
             "seller",
             timestamp,
             mapper.readTree("{\"order_id\":\"" + orderId + "\"}"));

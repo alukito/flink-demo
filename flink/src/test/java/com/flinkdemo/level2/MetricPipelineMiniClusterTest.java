@@ -36,8 +36,8 @@ public class MetricPipelineMiniClusterTest {
         ObjectMapper mapper = new ObjectMapper();
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         env.setParallelism(1);
-        EventEnvelope first = new EventEnvelope("e1", "cart.checkout", "b1", "buyer", "2026-07-18T10:00:00Z", mapper.readTree("{\"total_amount\":150000}"));
-        EventEnvelope second = new EventEnvelope("e2", "cart.checkout", "b2", "buyer", "2026-07-18T10:00:01Z", mapper.readTree("{\"total_amount\":339000}"));
+        EventEnvelope first = new EventEnvelope("e1", "cart.checkout", "b1", "Buyer 1", "buyer", "2026-07-18T10:00:00Z", mapper.readTree("{\"total_amount\":150000}"));
+        EventEnvelope second = new EventEnvelope("e2", "cart.checkout", "b2", "Buyer 2", "buyer", "2026-07-18T10:00:01Z", mapper.readTree("{\"total_amount\":339000}"));
         DataStream<EventEnvelope> input = env.fromCollection(List.of(first, second));
         List<Long> values = MetricJob.build(input, MetricDefinition.REVENUE).executeAndCollect(2).stream().map(stat -> stat.getValue()).collect(Collectors.toList());
         assertTrue(values.contains(489000L));
@@ -46,9 +46,9 @@ public class MetricPipelineMiniClusterTest {
     @Test public void countWindowsEmitGrowingSnapshotsThenAdvanceAtTheAlignedBoundary() throws Exception {
         ObjectMapper mapper = new ObjectMapper();
         List<EventEnvelope> events = List.of(
-            new EventEnvelope("e1", "cart.checkout", "b1", "buyer", "2026-07-18T10:00:00Z", mapper.readTree("{}")),
-            new EventEnvelope("e2", "cart.checkout", "b2", "buyer", "2026-07-18T10:00:01Z", mapper.readTree("{}")),
-            new EventEnvelope("e3", "cart.checkout", "b3", "buyer", "2026-07-18T10:00:02Z", mapper.readTree("{}")));
+            new EventEnvelope("e1", "cart.checkout", "b1", "Buyer 1", "buyer", "2026-07-18T10:00:00Z", mapper.readTree("{}")),
+            new EventEnvelope("e2", "cart.checkout", "b2", "Buyer 2", "buyer", "2026-07-18T10:00:01Z", mapper.readTree("{}")),
+            new EventEnvelope("e3", "cart.checkout", "b3", "Buyer 3", "buyer", "2026-07-18T10:00:02Z", mapper.readTree("{}")));
 
         try (KeyedOneInputStreamOperatorTestHarness<Byte, EventEnvelope, WindowStat> harness =
                 countWindowHarness()) {

@@ -61,6 +61,7 @@ func metricCacheKey(data []byte) (string, bool) {
 
 // Client represents a connected WebSocket client.
 type Client struct {
+	ID   string
 	Name string
 	Role string
 	conn *websocket.Conn
@@ -276,6 +277,7 @@ func (h *Hub) shouldSendToClient(client *Client, ev event.EventEnvelope) bool {
 	// Extract filter fields from payload
 	buyerID, _ := ev.Payload["buyer_id"].(string)
 	sellerID, _ := ev.Payload["seller_id"].(string)
+	shipperID, _ := ev.Payload["shipper_id"].(string)
 
 	switch ev.EventType {
 	case "product.listed":
@@ -286,36 +288,42 @@ func (h *Hub) shouldSendToClient(client *Client, ev event.EventEnvelope) bool {
 
 	case "cart.checkout":
 		if client.Role == "buyer" {
-			return ev.ActorID == client.Name
+			return buyerID == client.ID
 		}
 		if client.Role == "seller" {
-			return sellerID == client.Name
+			return sellerID == client.ID
 		}
 		return false
 
 	case "order.confirmed":
 		if client.Role == "buyer" {
-			return buyerID == client.Name
+			return buyerID == client.ID
 		}
 		if client.Role == "shipper" {
 			return true
 		}
 		if client.Role == "seller" {
-			return ev.ActorID == client.Name
+			return sellerID == client.ID
 		}
 		return false
 
 	case "shipment.picked":
 		if client.Role == "buyer" {
-			return buyerID == client.Name
+			return buyerID == client.ID
 		}
-		return false
+		if client.Role == "seller" {
+			return sellerID == client.ID
+		}
+		return client.Role == "shipper"
 
 	case "shipment.delivered":
 		if client.Role == "buyer" {
-			return buyerID == client.Name
+			return buyerID == client.ID
 		}
-		return false
+		if client.Role == "seller" {
+			return sellerID == client.ID
+		}
+		return client.Role == "shipper" && shipperID == client.ID
 	}
 	return false
 }

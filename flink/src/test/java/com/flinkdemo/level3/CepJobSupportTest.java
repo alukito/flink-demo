@@ -29,6 +29,6 @@ class CepJobSupportTest {
     }
 
     private EventEnvelope event(String timestamp) throws Exception {
-        return new EventEnvelope("event", "cart.checkout", "buyer", "buyer", timestamp, mapper.readTree("{}"));
+        return new EventEnvelope("event", "cart.checkout", "buyer", "Buyer", "buyer", timestamp, mapper.readTree("{}"));
     }
 }

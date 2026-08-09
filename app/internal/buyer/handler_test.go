@@ -30,7 +30,7 @@ func newTestHandler(t *testing.T) (*Handler, *product.Store, *order.Store) {
 }
 
 func claimsContext(name, role string) context.Context {
-	claims := &auth.Claims{Name: name, Role: role}
+	claims := &auth.Claims{ID: name, Name: name, Role: role}
 	return context.WithValue(context.Background(), auth.ClaimsKey, claims)
 }
 
@@ -288,4 +288,20 @@ func TestListOrders(t *testing.T) {
 	require.NoError(t, json.NewDecoder(rec.Body).Decode(&resp))
 	assert.Len(t, resp, 1)
 	assert.Equal(t, "o1", resp[0]["id"])
+}
+
+func TestSameNameBuyersOnlyListTheirOwnUUIDOrders(t *testing.T) {
+	h, _, orderStore := newTestHandler(t)
+	orderStore.Create(order.Order{ID: "buyer-a-order", BuyerID: "buyer-a", BuyerName: "alex", SellerID: "seller-a", SellerName: "merchant", Status: order.StatusCheckout})
+	orderStore.Create(order.Order{ID: "buyer-b-order", BuyerID: "buyer-b", BuyerName: "alex", SellerID: "seller-a", SellerName: "merchant", Status: order.StatusCheckout})
+
+	req := httptest.NewRequest("GET", "/api/buyer/orders", nil).WithContext(context.WithValue(context.Background(), auth.ClaimsKey, &auth.Claims{ID: "buyer-a", Name: "alex", Role: "buyer"}))
+	rec := httptest.NewRecorder()
+	h.ListOrders(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var orders []order.Order
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&orders))
+	require.Len(t, orders, 1)
+	assert.Equal(t, "buyer-a-order", orders[0].ID)
 }

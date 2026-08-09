@@ -282,41 +282,74 @@ func TestShouldSendToClient(t *testing.T) {
 	hub := NewHub()
 
 	// Dashboard gets everything
-	dashClient := &Client{Name: "dash", Role: "dashboard"}
-	assert.True(t, hub.shouldSendToClient(dashClient, event.NewEvent("any.event", "x", "buyer", nil)))
+	dashClient := &Client{ID: "dash", Name: "dash", Role: "dashboard"}
+	assert.True(t, hub.shouldSendToClient(dashClient, event.NewEvent("any.event", "x", "Buyer", "buyer", nil)))
 
 	// Buyer gets product.listed (all buyers)
-	buyerClient := &Client{Name: "alice", Role: "buyer"}
-	assert.True(t, hub.shouldSendToClient(buyerClient, event.NewEvent("product.listed", "seller1", "seller", nil)))
+	buyerClient := &Client{ID: "alice", Name: "alice", Role: "buyer"}
+	assert.True(t, hub.shouldSendToClient(buyerClient, event.NewEvent("product.listed", "seller1", "Seller", "seller", nil)))
 
 	// Buyer gets their own cart.checkout
-	assert.True(t, hub.shouldSendToClient(buyerClient, event.NewEvent("cart.checkout", "alice", "buyer", map[string]any{
-		"order_id": "o1", "seller_id": "s1",
+	assert.True(t, hub.shouldSendToClient(buyerClient, event.NewEvent("cart.checkout", "alice", "Alice", "buyer", map[string]any{
+		"order_id": "o1", "buyer_id": "alice", "seller_id": "s1",
 	})))
 
 	// Buyer does NOT get another buyer's cart.checkout
-	otherBuyer := event.NewEvent("cart.checkout", "bob", "buyer", map[string]any{
-		"order_id": "o2", "seller_id": "s1",
+	otherBuyer := event.NewEvent("cart.checkout", "bob", "Bob", "buyer", map[string]any{
+		"order_id": "o2", "buyer_id": "bob", "seller_id": "s1",
 	})
 	assert.False(t, hub.shouldSendToClient(buyerClient, otherBuyer))
 
 	// Seller gets cart.checkout for their products
-	sellerClient := &Client{Name: "s1", Role: "seller"}
-	assert.True(t, hub.shouldSendToClient(sellerClient, event.NewEvent("cart.checkout", "alice", "buyer", map[string]any{
-		"order_id": "o1", "seller_id": "s1",
+	sellerClient := &Client{ID: "s1", Name: "s1", Role: "seller"}
+	assert.True(t, hub.shouldSendToClient(sellerClient, event.NewEvent("cart.checkout", "alice", "Alice", "buyer", map[string]any{
+		"order_id": "o1", "buyer_id": "alice", "seller_id": "s1",
 	})))
 
 	// Seller does NOT get cart.checkout for other sellers' products
-	assert.False(t, hub.shouldSendToClient(sellerClient, event.NewEvent("cart.checkout", "alice", "buyer", map[string]any{
-		"order_id": "o2", "seller_id": "s2",
+	assert.False(t, hub.shouldSendToClient(sellerClient, event.NewEvent("cart.checkout", "alice", "Alice", "buyer", map[string]any{
+		"order_id": "o2", "buyer_id": "alice", "seller_id": "s2",
 	})))
 
 	// Shipper gets all order.confirmed events
-	shipperClient := &Client{Name: "ship1", Role: "shipper"}
-	assert.True(t, hub.shouldSendToClient(shipperClient, event.NewEvent("order.confirmed", "s1", "seller", map[string]any{
-		"order_id": "o1", "buyer_id": "b1",
+	shipperClient := &Client{ID: "ship1", Name: "ship1", Role: "shipper"}
+	assert.True(t, hub.shouldSendToClient(shipperClient, event.NewEvent("order.confirmed", "s1", "Seller", "seller", map[string]any{
+		"order_id": "o1", "buyer_id": "b1", "seller_id": "s1",
 	})))
 
 	// Shipper does NOT get product.listed
-	assert.False(t, hub.shouldSendToClient(shipperClient, event.NewEvent("product.listed", "s1", "seller", nil)))
+	assert.False(t, hub.shouldSendToClient(shipperClient, event.NewEvent("product.listed", "s1", "Seller", "seller", nil)))
+}
+
+func TestLifecycleRoutingUsesUUIDsForSameNameClients(t *testing.T) {
+	hub := NewHub()
+	sellerA := &Client{ID: "seller-a", Name: "alex", Role: "seller"}
+	sellerB := &Client{ID: "seller-b", Name: "alex", Role: "seller"}
+	buyer := &Client{ID: "buyer-a", Name: "alex", Role: "buyer"}
+	owner := &Client{ID: "shipper-a", Name: "alex", Role: "shipper"}
+	otherShipper := &Client{ID: "shipper-b", Name: "alex", Role: "shipper"}
+
+	checkout := event.NewEvent("cart.checkout", "buyer-a", "alex", "buyer", map[string]any{"buyer_id": "buyer-a", "seller_id": "seller-a"})
+	assert.True(t, hub.shouldSendToClient(sellerA, checkout))
+	assert.False(t, hub.shouldSendToClient(sellerB, checkout))
+	assert.True(t, hub.shouldSendToClient(buyer, checkout))
+
+	confirmed := event.NewEvent("order.confirmed", "seller-a", "alex", "seller", map[string]any{"buyer_id": "buyer-a", "seller_id": "seller-a"})
+	assert.True(t, hub.shouldSendToClient(sellerA, confirmed))
+	assert.False(t, hub.shouldSendToClient(sellerB, confirmed))
+	assert.True(t, hub.shouldSendToClient(buyer, confirmed))
+	assert.True(t, hub.shouldSendToClient(otherShipper, confirmed))
+
+	picked := event.NewEvent("shipment.picked", "shipper-a", "alex", "shipper", map[string]any{"buyer_id": "buyer-a", "seller_id": "seller-a", "shipper_id": "shipper-a"})
+	assert.True(t, hub.shouldSendToClient(sellerA, picked))
+	assert.False(t, hub.shouldSendToClient(sellerB, picked))
+	assert.True(t, hub.shouldSendToClient(buyer, picked))
+	assert.True(t, hub.shouldSendToClient(otherShipper, picked))
+
+	delivered := event.NewEvent("shipment.delivered", "shipper-a", "alex", "shipper", map[string]any{"buyer_id": "buyer-a", "seller_id": "seller-a", "shipper_id": "shipper-a"})
+	assert.True(t, hub.shouldSendToClient(sellerA, delivered))
+	assert.False(t, hub.shouldSendToClient(sellerB, delivered))
+	assert.True(t, hub.shouldSendToClient(buyer, delivered))
+	assert.True(t, hub.shouldSendToClient(owner, delivered))
+	assert.False(t, hub.shouldSendToClient(otherShipper, delivered))
 }

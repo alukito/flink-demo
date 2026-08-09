@@ -30,7 +30,7 @@ func newTestHandler(t *testing.T) (*Handler, *Store, *order.Store) {
 }
 
 func claimsContext(name, role string) context.Context {
-	claims := &auth.Claims{Name: name, Role: role}
+	claims := &auth.Claims{ID: name, Name: name, Role: role}
 	return context.WithValue(context.Background(), auth.ClaimsKey, claims)
 }
 
@@ -136,6 +136,29 @@ func TestConfirmOrderWrongSeller(t *testing.T) {
 	h.ConfirmOrder(rec, req)
 
 	assert.Equal(t, http.StatusForbidden, rec.Code)
+}
+
+func TestSameNameSellersRemainIsolatedByID(t *testing.T) {
+	h, prodStore, orderStore := newTestHandler(t)
+	prodStore.Add(Product{ID: "seller-a-product", Name: "A", SellerID: "seller-a", SellerName: "alex", Price: 100, ListedAt: time.Now()})
+	prodStore.Add(Product{ID: "seller-b-product", Name: "B", SellerID: "seller-b", SellerName: "alex", Price: 100, ListedAt: time.Now()})
+	orderStore.Create(order.Order{ID: "seller-a-order", BuyerID: "buyer-a", BuyerName: "alex", SellerID: "seller-a", SellerName: "alex", Status: order.StatusCheckout})
+
+	listRequest := httptest.NewRequest("GET", "/api/seller/products", nil).WithContext(context.WithValue(context.Background(), auth.ClaimsKey, &auth.Claims{ID: "seller-a", Name: "alex", Role: "seller"}))
+	listResponse := httptest.NewRecorder()
+	h.ListProducts(listResponse, listRequest)
+	require.Equal(t, http.StatusOK, listResponse.Code)
+	var products []Product
+	require.NoError(t, json.NewDecoder(listResponse.Body).Decode(&products))
+	require.Len(t, products, 1)
+	assert.Equal(t, "seller-a-product", products[0].ID)
+
+	confirmRequest := httptest.NewRequest("POST", "/api/seller/orders/seller-a-order/confirm", nil).WithContext(context.WithValue(context.Background(), auth.ClaimsKey, &auth.Claims{ID: "seller-b", Name: "alex", Role: "seller"}))
+	confirmRequest.SetPathValue("id", "seller-a-order")
+	confirmResponse := httptest.NewRecorder()
+	h.ConfirmOrder(confirmResponse, confirmRequest)
+	assert.Equal(t, http.StatusForbidden, confirmResponse.Code)
+	assert.Equal(t, order.StatusCheckout, orderStore.Get("seller-a-order").Status)
 }
 
 func TestConfirmOrderNotFound(t *testing.T) {

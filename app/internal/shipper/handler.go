@@ -42,7 +42,7 @@ func (h *Handler) PickJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := h.orders.Pick(orderID, claims.Name)
+	err := h.orders.Pick(orderID, claims.ID, claims.Name)
 	if err != nil {
 		switch {
 		case errors.Is(err, order.ErrInvalidTransition):
@@ -54,10 +54,14 @@ func (h *Handler) PickJob(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Produce shipment.picked event
-	ev := event.NewEvent("shipment.picked", claims.Name, "shipper", map[string]any{
-		"order_id":  orderID,
-		"buyer_id":  o.BuyerID,
-		"seller_id": o.SellerID,
+	ev := event.NewEvent("shipment.picked", claims.ID, claims.Name, claims.Role, map[string]any{
+		"order_id":     orderID,
+		"buyer_id":     o.BuyerID,
+		"buyer_name":   o.BuyerName,
+		"seller_id":    o.SellerID,
+		"seller_name":  o.SellerName,
+		"shipper_id":   claims.ID,
+		"shipper_name": claims.Name,
 	})
 	if err := h.producer.Write(r.Context(), "shipment.picked", ev); err != nil {
 		slog.Error("failed to produce shipment.picked event", "error", err, "order_id", orderID)
@@ -84,11 +88,13 @@ func (h *Handler) DeliverJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := h.orders.Deliver(orderID, claims.Name)
+	err := h.orders.Deliver(orderID, claims.ID)
 	if err != nil {
 		switch {
 		case errors.Is(err, order.ErrInvalidTransition):
 			http.Error(w, "job is not in picked state", http.StatusConflict)
+		case errors.Is(err, order.ErrWrongShipper):
+			http.Error(w, "forbidden", http.StatusForbidden)
 		default:
 			http.Error(w, "internal error", http.StatusInternalServerError)
 		}
@@ -96,9 +102,14 @@ func (h *Handler) DeliverJob(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Produce shipment.delivered event
-	ev := event.NewEvent("shipment.delivered", claims.Name, "shipper", map[string]any{
-		"order_id": orderID,
-		"buyer_id": o.BuyerID,
+	ev := event.NewEvent("shipment.delivered", claims.ID, claims.Name, claims.Role, map[string]any{
+		"order_id":     orderID,
+		"buyer_id":     o.BuyerID,
+		"buyer_name":   o.BuyerName,
+		"seller_id":    o.SellerID,
+		"seller_name":  o.SellerName,
+		"shipper_id":   o.PickedBy,
+		"shipper_name": o.PickedByName,
 	})
 	if err := h.producer.Write(r.Context(), "shipment.delivered", ev); err != nil {
 		slog.Error("failed to produce shipment.delivered event", "error", err, "order_id", orderID)
