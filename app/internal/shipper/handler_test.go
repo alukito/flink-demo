@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/kuang/flink-demo/internal/auth"
 	"github.com/kuang/flink-demo/internal/kafkaclient"
@@ -15,9 +16,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func newTestHandler(t *testing.T) (*Handler, *order.Store) {
+func newTestHandler(t *testing.T, storeOptions ...order.StoreOption) (*Handler, *order.Store) {
 	t.Helper()
-	orderStore := order.NewStore()
+	if len(storeOptions) == 0 {
+		storeOptions = []order.StoreOption{order.WithReadyDelay(func() time.Duration { return 0 })}
+	}
+	orderStore := order.NewStore(storeOptions...)
 	producer := kafkaclient.NewProducer("localhost:9092")
 	t.Cleanup(func() { producer.Close() })
 	h := NewHandler(orderStore, producer)
@@ -161,4 +165,19 @@ func TestDeliverJobNotPicked(t *testing.T) {
 	h.DeliverJob(rec, req)
 
 	assert.Equal(t, http.StatusConflict, rec.Code)
+}
+
+func TestDeliverJobNotReady(t *testing.T) {
+	h, orderStore := newTestHandler(t, order.WithReadyDelay(func() time.Duration { return 10 * time.Second }))
+	orderStore.Create(order.Order{ID: "o1", BuyerID: "b1", SellerID: "s1", Status: order.StatusConfirmed})
+	require.NoError(t, orderStore.Pick("o1", "shipper1", "shipper1"))
+
+	req := httptest.NewRequest("POST", "/api/shipper/jobs/o1/deliver", nil)
+	req.SetPathValue("id", "o1")
+	req = req.WithContext(claimsContext("shipper1", "shipper"))
+	rec := httptest.NewRecorder()
+	h.DeliverJob(rec, req)
+
+	assert.Equal(t, http.StatusConflict, rec.Code)
+	assert.Equal(t, order.StatusPicked, orderStore.Get("o1").Status)
 }

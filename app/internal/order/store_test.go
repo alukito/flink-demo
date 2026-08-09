@@ -43,6 +43,22 @@ func TestStoreGetNotFound(t *testing.T) {
 	assert.Nil(t, s.Get("nonexistent"))
 }
 
+func TestStoreGetReturnsAnIndependentCopy(t *testing.T) {
+	s := NewStore()
+	o := sampleOrder()
+	s.Create(o)
+
+	got := s.Get("o1")
+	require.NotNil(t, got)
+	got.Status = StatusDelivered
+	got.Items[0].ProductName = "Changed outside the store"
+
+	stored := s.Get("o1")
+	require.NotNil(t, stored)
+	assert.Equal(t, StatusCheckout, stored.Status)
+	assert.Equal(t, "Widget", stored.Items[0].ProductName)
+}
+
 func TestStoreByBuyer(t *testing.T) {
 	s := NewStore()
 	s.Create(Order{ID: "o1", BuyerID: "b1", SellerID: "s1", Status: StatusCheckout})
@@ -126,6 +142,23 @@ func TestStorePick(t *testing.T) {
 	assert.False(t, got.PickedAt.IsZero())
 }
 
+func TestStorePickRecordsServerOwnedReadiness(t *testing.T) {
+	pickedAt := time.Date(2026, time.August, 9, 10, 0, 0, 0, time.UTC)
+	s := NewStore(
+		WithClock(func() time.Time { return pickedAt }),
+		WithReadyDelay(func() time.Duration { return 10 * time.Second }),
+	)
+	s.Create(sampleOrder())
+	require.NoError(t, s.Confirm("o1", "seller1"))
+
+	require.NoError(t, s.Pick("o1", "shipper-uuid", "Alex"))
+
+	got := s.Get("o1")
+	require.NotNil(t, got)
+	assert.Equal(t, pickedAt, got.PickedAt)
+	assert.Equal(t, pickedAt.Add(10*time.Second), got.ReadyAt)
+}
+
 func TestStorePickRaceCondition(t *testing.T) {
 	s := NewStore()
 	s.Create(sampleOrder())
@@ -149,10 +182,15 @@ func TestStorePickNotConfirmed(t *testing.T) {
 }
 
 func TestStoreDeliver(t *testing.T) {
-	s := NewStore()
+	now := time.Date(2026, time.August, 9, 10, 0, 0, 0, time.UTC)
+	s := NewStore(
+		WithClock(func() time.Time { return now }),
+		WithReadyDelay(func() time.Duration { return 10 * time.Second }),
+	)
 	s.Create(sampleOrder())
 	require.NoError(t, s.Confirm("o1", "seller1"))
 	require.NoError(t, s.Pick("o1", "shipper1", "Alex"))
+	now = now.Add(10 * time.Second)
 
 	err := s.Deliver("o1", "shipper1")
 	require.NoError(t, err)
@@ -161,6 +199,25 @@ func TestStoreDeliver(t *testing.T) {
 	assert.Equal(t, StatusDelivered, got.Status)
 	assert.Equal(t, "Alex", got.PickedByName)
 	assert.False(t, got.DeliveredAt.IsZero())
+}
+
+func TestStoreDeliverRequiresReadinessAndOwningShipper(t *testing.T) {
+	now := time.Date(2026, time.August, 9, 10, 0, 0, 0, time.UTC)
+	s := NewStore(
+		WithClock(func() time.Time { return now }),
+		WithReadyDelay(func() time.Duration { return 10 * time.Second }),
+	)
+	s.Create(sampleOrder())
+	require.NoError(t, s.Confirm("o1", "seller1"))
+	require.NoError(t, s.Pick("o1", "shipper-owner", "Alex"))
+
+	assert.ErrorIs(t, s.Deliver("o1", "shipper-owner"), ErrNotReady)
+	assert.ErrorIs(t, s.Deliver("o1", "shipper-other"), ErrWrongShipper)
+	assert.Equal(t, StatusPicked, s.Get("o1").Status)
+
+	now = now.Add(10 * time.Second)
+	require.NoError(t, s.Deliver("o1", "shipper-owner"))
+	assert.Equal(t, now, s.Get("o1").DeliveredAt)
 }
 
 func TestStoreRejectsDeliveryByAnotherShipper(t *testing.T) {
@@ -181,6 +238,39 @@ func TestStoreDeliverNotPicked(t *testing.T) {
 
 	err := s.Deliver("o1", "shipper1")
 	assert.ErrorIs(t, err, ErrInvalidTransition)
+}
+
+func TestStoreByShipperReturnsActiveAndNewestFirstHistory(t *testing.T) {
+	now := time.Date(2026, time.August, 9, 10, 0, 0, 0, time.UTC)
+	s := NewStore(
+		WithClock(func() time.Time { return now }),
+		WithReadyDelay(func() time.Duration { return 0 }),
+	)
+
+	for _, id := range []string{"active", "older", "newer", "other"} {
+		o := sampleOrder()
+		o.ID = id
+		s.Create(o)
+		require.NoError(t, s.Confirm(id, "seller1"))
+	}
+
+	require.NoError(t, s.Pick("active", "shipper-owner", "Alex"))
+	require.NoError(t, s.Pick("older", "shipper-owner", "Alex"))
+	require.NoError(t, s.Deliver("older", "shipper-owner"))
+	now = now.Add(time.Second)
+	require.NoError(t, s.Pick("newer", "shipper-owner", "Alex"))
+	require.NoError(t, s.Deliver("newer", "shipper-owner"))
+	require.NoError(t, s.Pick("other", "shipper-other", "Alex"))
+
+	active, history := s.ByShipper("shipper-owner")
+	require.Len(t, active, 1)
+	assert.Equal(t, "active", active[0].ID)
+	require.Len(t, history, 2)
+	assert.Equal(t, []string{"newer", "older"}, []string{history[0].ID, history[1].ID})
+
+	history[0].PickedBy = "mutated"
+	_, historyAgain := s.ByShipper("shipper-owner")
+	assert.Equal(t, "shipper-owner", historyAgain[0].PickedBy)
 }
 
 // TestStorePickConcurrentRace exercises the mutex-protected status transition

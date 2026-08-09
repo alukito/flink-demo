@@ -95,6 +95,8 @@ func (h *Handler) DeliverJob(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "job is not in picked state", http.StatusConflict)
 		case errors.Is(err, order.ErrWrongShipper):
 			http.Error(w, "forbidden", http.StatusForbidden)
+		case errors.Is(err, order.ErrNotReady):
+			http.Error(w, "job is not ready for delivery", http.StatusConflict)
 		default:
 			http.Error(w, "internal error", http.StatusInternalServerError)
 		}
