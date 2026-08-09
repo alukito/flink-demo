@@ -100,6 +100,7 @@ func (s *Server) buildRoutes() http.Handler {
 
 	// Shipper routes
 	mux.Handle("GET /api/shipper/jobs", authMW(auth.RequireRole("shipper")(http.HandlerFunc(s.shipperHandler.ListJobs))))
+	mux.Handle("GET /api/shipper/deliveries", authMW(auth.RequireRole("shipper")(http.HandlerFunc(s.shipperHandler.ListDeliveries))))
 	mux.Handle("POST /api/shipper/jobs/{id}/pick", authMW(auth.RequireRole("shipper")(http.HandlerFunc(s.shipperHandler.PickJob))))
 	mux.Handle("POST /api/shipper/jobs/{id}/deliver", authMW(auth.RequireRole("shipper")(http.HandlerFunc(s.shipperHandler.DeliverJob))))
 

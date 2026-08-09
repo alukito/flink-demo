@@ -109,6 +109,25 @@ func TestProtectedRouteWithCorrectRole(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rec2.Code)
 }
 
+func TestShipperDeliveriesRouteReturnsEmptyCollections(t *testing.T) {
+	srv := newTestServer()
+	token := createSessionAndGetToken(t, srv, "shipper", "shipper")
+
+	req := httptest.NewRequest("GET", "/api/shipper/deliveries", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	srv.handler.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var response struct {
+		Active  []json.RawMessage `json:"active"`
+		History []json.RawMessage `json:"history"`
+	}
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&response))
+	assert.Empty(t, response.Active)
+	assert.Empty(t, response.History)
+}
+
 // createSessionAndGetToken is a helper that creates a session and extracts
 // the JWT token from the response.
 func createSessionAndGetToken(t *testing.T, srv *Server, name, role string) string {
