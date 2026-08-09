@@ -1,6 +1,7 @@
 const API_BASE = '/api';
 
 export interface SessionResponse {
+  id: string;
   token: string;
   name: string;
   role: string;

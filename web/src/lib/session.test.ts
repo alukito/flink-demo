@@ -18,11 +18,12 @@ class MemoryStorage implements StorageLike {
   }
 }
 
-test('reads and clears all three session fields', () => {
+test('round-trips and clears the UUID session identity', () => {
   const storage = new MemoryStorage();
-  writeSession({ token: 'token-1', name: 'Ada', role: 'buyer' }, storage);
+  writeSession({ id: 'buyer-a', token: 'token-1', name: 'Ada', role: 'buyer' }, storage);
 
-  assert.deepEqual(readSession(storage), { token: 'token-1', name: 'Ada', role: 'buyer' });
+  assert.deepEqual(readSession(storage), { id: 'buyer-a', token: 'token-1', name: 'Ada', role: 'buyer' });
+  assert.equal(storage.getItem('id'), 'buyer-a');
   assert.equal(storage.getItem('token'), 'token-1');
   assert.equal(storage.getItem('name'), 'Ada');
   assert.equal(storage.getItem('role'), 'buyer');
@@ -30,23 +31,26 @@ test('reads and clears all three session fields', () => {
   clearSession(storage);
 
   assert.equal(readSession(storage), null);
+  assert.equal(storage.getItem('id'), null);
   assert.equal(storage.getItem('token'), null);
   assert.equal(storage.getItem('name'), null);
   assert.equal(storage.getItem('role'), null);
 });
 
-test('authorizes only a complete session with the requested role', () => {
-  const cases: Array<{ token: string | null; name: string | null; role: string | null; authorized: boolean }> = [
-    { token: 'token-1', name: 'Ada', role: 'buyer', authorized: true },
-    { token: null, name: 'Ada', role: 'buyer', authorized: false },
-    { token: 'token-1', name: null, role: 'buyer', authorized: false },
-    { token: 'token-1', name: 'Ada', role: null, authorized: false },
-    { token: 'token-1', name: 'Ada', role: 'seller', authorized: false },
-    { token: 'token-1', name: 'Ada', role: 'administrator', authorized: false },
+test('authorizes only a complete UUID session with the requested role', () => {
+  const cases: Array<{ id: string | null; token: string | null; name: string | null; role: string | null; authorized: boolean }> = [
+    { id: 'buyer-a', token: 'token-1', name: 'Ada', role: 'buyer', authorized: true },
+    { id: null, token: 'token-1', name: 'Ada', role: 'buyer', authorized: false },
+    { id: 'buyer-a', token: null, name: 'Ada', role: 'buyer', authorized: false },
+    { id: 'buyer-a', token: 'token-1', name: null, role: 'buyer', authorized: false },
+    { id: 'buyer-a', token: 'token-1', name: 'Ada', role: null, authorized: false },
+    { id: 'buyer-a', token: 'token-1', name: 'Ada', role: 'seller', authorized: false },
+    { id: 'buyer-a', token: 'token-1', name: 'Ada', role: 'administrator', authorized: false },
   ];
 
   for (const entry of cases) {
     const storage = new MemoryStorage();
+    if (entry.id !== null) storage.setItem('id', entry.id);
     if (entry.token !== null) storage.setItem('token', entry.token);
     if (entry.name !== null) storage.setItem('name', entry.name);
     if (entry.role !== null) storage.setItem('role', entry.role);

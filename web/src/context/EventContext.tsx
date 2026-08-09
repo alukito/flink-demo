@@ -1,17 +1,11 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
 import type { CepAlert } from '../lib/cepAlerts';
 import { appendUniqueEvent } from '../lib/eventFeed';
+import type { OrderEvent } from '../lib/orderEvents';
 
 export type { CepAlert } from '../lib/cepAlerts';
 
-export interface EventEnvelope {
-  event_id: string;
-  event_type: string;
-  actor_id: string;
-  actor_role: string;
-  timestamp: string;
-  payload: Record<string, any>;
-}
+export interface EventEnvelope extends OrderEvent {}
 
 export type MetricName = 'listings_count' | 'cart_adds_count' | 'tx_count' | 'confirmed_orders' | 'delivered_orders' | 'top_product' | 'revenue';
 export interface WindowStat {

@@ -6,6 +6,7 @@ import { useEvents } from '../context/EventContext';
 import {
   addProduct, listSellerProducts, listSellerOrders, confirmOrder,
 } from '../api/client';
+import { isSellerOrderEvent } from '../lib/orderEvents';
 
 interface Product {
   id: string; name: string; price: number; quantity: number; seller_id: string;
@@ -16,7 +17,7 @@ interface OrderItem {
 }
 
 interface Order {
-  id: string; buyer_id: string; seller_id: string;
+  id: string; buyer_id: string; buyer_name: string; seller_id: string; seller_name: string;
   items: OrderItem[]; total_amount: number; shipping_address: string;
   status: string; created_at: string;
 }
@@ -26,7 +27,7 @@ function formatPrice(price: number): string {
 }
 
 export default function Seller() {
-  const { name, token, clearSession } = useSession();
+  const { id, name, token, clearSession } = useSession();
   const navigate = useNavigate();
   const { events, addEvent } = useEvents();
   useWebSocket(addEvent);
@@ -53,9 +54,8 @@ export default function Seller() {
   useEffect(() => { loadProducts(); loadOrders(); }, [loadProducts, loadOrders]);
 
   useEffect(() => {
-    const hasNewCheckout = events.some(e => e.event_type === 'cart.checkout' && e.payload?.seller_id === name);
-    if (hasNewCheckout) loadOrders();
-  }, [events, name, loadOrders]);
+    if (events[0] && isSellerOrderEvent(events[0], id)) loadOrders();
+  }, [events, id, loadOrders]);
 
   const handleAddProduct = async () => {
     if (!token || adding) return;
@@ -165,7 +165,7 @@ export default function Seller() {
                 marginBottom: '12px', background: '#f9fafb',
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ fontWeight: 'bold' }}>Order from {o.buyer_id}</span>
+                  <span style={{ fontWeight: 'bold' }}>Order from {o.buyer_name ?? o.buyer_id}</span>
                   <span style={{
                     padding: '2px 8px', borderRadius: '4px', fontSize: '12px',
                     background: o.status === 'checkout' ? '#fef3c7' : '#d1fae5',

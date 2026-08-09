@@ -7,9 +7,10 @@ import {
   listBuyerProducts, addToCart, checkout, listBuyerOrders,
 } from '../api/client';
 import { cartItemCount } from '../lib/cart';
+import { isBuyerOrderEvent } from '../lib/orderEvents';
 
 interface Product {
-  id: string; name: string; price: number; quantity: number; seller_id: string;
+  id: string; name: string; price: number; quantity: number; seller_id: string; seller_name: string;
 }
 
 interface CartItem {
@@ -21,7 +22,7 @@ interface OrderItem {
 }
 
 interface Order {
-  id: string; buyer_id: string; seller_id: string;
+  id: string; buyer_id: string; buyer_name: string; seller_id: string; seller_name: string;
   items: OrderItem[]; total_amount: number; shipping_address: string;
   status: string; created_at: string;
 }
@@ -31,7 +32,7 @@ function formatPrice(price: number): string {
 }
 
 export default function Buyer() {
-  const { name, token, clearSession } = useSession();
+  const { id, name, token, clearSession } = useSession();
   const navigate = useNavigate();
   const { events, addEvent } = useEvents();
   useWebSocket(addEvent);
@@ -61,16 +62,12 @@ export default function Buyer() {
   useEffect(() => { loadProducts(); loadOrders(); }, [loadProducts, loadOrders]);
 
   useEffect(() => {
-    if (events.some(e => e.event_type === 'product.listed')) loadProducts();
+    if (events[0]?.event_type === 'product.listed') loadProducts();
   }, [events, loadProducts]);
 
   useEffect(() => {
-    const hasOrderUpdate = events.some(e =>
-      ['order.confirmed', 'shipment.picked', 'shipment.delivered'].includes(e.event_type) &&
-      e.payload?.buyer_id === name
-    );
-    if (hasOrderUpdate) loadOrders();
-  }, [events, name, loadOrders]);
+    if (events[0] && isBuyerOrderEvent(events[0], id)) loadOrders();
+  }, [events, id, loadOrders]);
 
   const cartTotal = cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
 
@@ -189,7 +186,7 @@ export default function Buyer() {
               }}>
                 <div style={{ fontWeight: 'bold' }}>{p.name}</div>
                 <div style={{ color: '#6b7280' }}>{formatPrice(p.price)}</div>
-                <div style={{ color: '#9ca3af', fontSize: '12px' }}>by {p.seller_id}</div>
+                <div style={{ color: '#9ca3af', fontSize: '12px' }}>by {p.seller_name ?? p.seller_id}</div>
                 <button
                   onClick={() => handleAddToCart(p)}
                   disabled={cartAddingId === p.id}
@@ -215,7 +212,7 @@ export default function Buyer() {
               marginBottom: '12px', background: '#f9fafb',
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ fontWeight: 'bold' }}>Purchase from {o.seller_id}</span>
+                <span style={{ fontWeight: 'bold' }}>Purchase from {o.seller_name ?? o.seller_id}</span>
                 <span style={{
                   padding: '2px 8px', borderRadius: '4px', fontSize: '12px',
                   background: o.status === 'delivered' ? '#d1fae5' : o.status === 'picked' ? '#fed7aa' : o.status === 'confirmed' ? '#bfdbfe' : '#fef3c7',

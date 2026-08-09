@@ -19,7 +19,7 @@ export default function Landing() {
     setError('');
     try {
       const resp: SessionResponse = await createSession(name.trim(), role);
-      setSession(resp.token, resp.name, role);
+      setSession(resp.id, resp.token, resp.name, role);
       navigate(`/${role}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create session');

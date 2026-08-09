@@ -39,7 +39,7 @@ function formatValue(value: number | undefined, rupiah = false): string {
 }
 
 function EventRow({ event }: { event: EventEnvelope }) {
-  return <div className="event-row"><span>{new Date(event.timestamp).toLocaleTimeString()}</span><strong>{event.event_type}</strong><span>{event.actor_id}</span><span>{JSON.stringify(event.payload)}</span></div>;
+  return <div className="event-row"><span>{new Date(event.timestamp).toLocaleTimeString()}</span><strong>{event.event_type}</strong><span>{event.actor_name ?? event.actor_id}</span><span>{JSON.stringify(event.payload)}</span></div>;
 }
 
 function AlertCountChart({ points, label }: { points: AlertBucket[]; label: string }) {
