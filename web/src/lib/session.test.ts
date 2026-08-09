@@ -42,7 +42,6 @@ test('authorizes only a complete UUID session with the requested role', () => {
     { id: 'buyer-a', token: 'token-1', name: 'Ada', role: 'buyer', authorized: true },
     { id: null, token: 'token-1', name: 'Ada', role: 'buyer', authorized: false },
     { id: 'buyer-a', token: null, name: 'Ada', role: 'buyer', authorized: false },
-    { id: 'buyer-a', token: 'token-1', name: null, role: 'buyer', authorized: false },
     { id: 'buyer-a', token: 'token-1', name: 'Ada', role: null, authorized: false },
     { id: 'buyer-a', token: 'token-1', name: 'Ada', role: 'seller', authorized: false },
     { id: 'buyer-a', token: 'token-1', name: 'Ada', role: 'administrator', authorized: false },
@@ -57,4 +56,14 @@ test('authorizes only a complete UUID session with the requested role', () => {
 
     assert.equal(hasRequiredRole('buyer', storage), entry.authorized);
   }
+});
+
+test('keeps a UUID session authorized when its display name is missing', () => {
+  const storage = new MemoryStorage();
+  storage.setItem('id', 'buyer-a');
+  storage.setItem('token', 'token-1');
+  storage.setItem('role', 'buyer');
+
+  assert.deepEqual(readSession(storage), { id: 'buyer-a', token: 'token-1', name: null, role: 'buyer' });
+  assert.equal(hasRequiredRole('buyer', storage), true);
 });

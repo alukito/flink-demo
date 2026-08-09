@@ -8,9 +8,9 @@ interface RequireRoleProps {
 }
 
 export default function RequireRole({ role, children }: RequireRoleProps) {
-  const { token, name, role: sessionRole } = useSession();
+  const { id, token, role: sessionRole } = useSession();
 
-  if (!token || !name || sessionRole !== role) {
+  if (!id || !token || sessionRole !== role) {
     return <Navigate to="/" replace />;
   }
 

@@ -4,7 +4,7 @@ export type Role = typeof ROLES[number];
 export interface Session {
   id: string;
   token: string;
-  name: string;
+  name: string | null;
   role: Role;
 }
 
@@ -23,14 +23,18 @@ export function readSession(storage: StorageLike = sessionStorage): Session | nu
   const token = storage.getItem('token');
   const name = storage.getItem('name');
   const role = storage.getItem('role');
-  if (!id || !token || !name || !isRole(role)) return null;
+  if (!id || !token || !isRole(role)) return null;
   return { id, token, name, role };
 }
 
 export function writeSession(session: Session, storage: StorageLike = sessionStorage): void {
   storage.setItem('id', session.id);
   storage.setItem('token', session.token);
-  storage.setItem('name', session.name);
+  if (session.name === null) {
+    storage.removeItem('name');
+  } else {
+    storage.setItem('name', session.name);
+  }
   storage.setItem('role', session.role);
 }
 
