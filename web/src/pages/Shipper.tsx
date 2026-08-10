@@ -52,6 +52,7 @@ export default function Shipper() {
         jobs,
         deliveries: copyDeliveries(deliveries),
       }),
+      reportError: setError,
     });
   }, [token]);
 

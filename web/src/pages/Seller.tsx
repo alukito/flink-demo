@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSession } from '../context/SessionContext';
 import { useWebSocket } from '../hooks/useWebSocket';
@@ -7,6 +7,7 @@ import {
   addProduct, listSellerProducts, listSellerOrders, confirmOrder,
 } from '../api/client';
 import { isSellerOrderEvent } from '../lib/orderEvents';
+import { loadLatestSellerOrders } from '../lib/sellerRefresh';
 
 interface Product {
   id: string; name: string; price: number; quantity: number; seller_id: string;
@@ -38,6 +39,7 @@ export default function Seller() {
   const [error, setError] = useState('');
   const [adding, setAdding] = useState(false);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const latestOrdersGeneration = useRef(0);
 
   const loadProducts = useCallback(async () => {
     if (!token) return;
@@ -46,9 +48,14 @@ export default function Seller() {
   }, [token]);
 
   const loadOrders = useCallback(async () => {
+    const generation = ++latestOrdersGeneration.current;
     if (!token) return;
-    const resp = await listSellerOrders(token);
-    if (resp.ok) setOrders(await resp.json());
+    await loadLatestSellerOrders({
+      generation,
+      getLatestGeneration: () => latestOrdersGeneration.current,
+      listOrders: () => listSellerOrders(token),
+      commit: setOrders,
+    });
   }, [token]);
 
   useEffect(() => { loadProducts(); loadOrders(); }, [loadProducts, loadOrders]);
