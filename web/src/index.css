@@ -58,6 +58,7 @@ input {
 .metric-bucket-y-tick line { stroke: #e5e7eb; stroke-dasharray: 2 2; }
 .metric-bucket-y-tick text { fill: #6b7280; font-size: 9px; }
 .metric-bucket-x-label { fill: #6b7280; font-size: 9px; }
+.metric-bucket-empty-slot { fill: #f3f4f6; }
 .metric-bucket-hit-target { fill: transparent; cursor: pointer; }
 .metric-bucket-bar { fill: #2563eb; cursor: pointer; outline: none; }
 .metric-bucket-hit-target:hover + .metric-bucket-bar, .metric-bucket-hit-target:focus + .metric-bucket-bar { fill: #1d4ed8; stroke: #172554; stroke-width: 2px; }

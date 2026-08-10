@@ -20,7 +20,7 @@ import {
   type DeliveryDuration,
   type CepAlert,
 } from '../lib/cepAlerts';
-import { metricBuckets } from '../lib/metricBuckets';
+import { dashboardSessionStart, metricBuckets } from '../lib/metricBuckets';
 import { requestFreshDashboardToken } from '../lib/dashboardToken';
 
 const METRICS: Array<{ name: MetricName; label: string; window: boolean; daily: boolean; rupiah?: boolean }> = [
@@ -62,6 +62,7 @@ export default function Dashboard() {
   const [stats, setStats] = useState<WindowStat[]>([]);
   const [alerts, setAlerts] = useState<CepAlert[]>([]);
   const [jakartaDay, setJakartaDay] = useState(() => jakartaDateKey(new Date()));
+  const [sessionStart] = useState(() => dashboardSessionStart(new Date()));
   const [now, setNow] = useState(() => new Date());
   const onMessage = useCallback((message: DashboardMessage) => {
     const cepAlert = readCepAlertMessage(message);
@@ -135,7 +136,7 @@ export default function Dashboard() {
     <section><h2>Level 2 — Stateful Aggregations</h2><p>Five-minute aligned windows update every five seconds; daily totals reset at Jakarta midnight (WIB).</p><div className="metric-grid">{METRICS.map((metric) => {
       const values = grouped[metric.name];
       const windows = values.filter((item) => item.scope === 'window');
-      const buckets = metric.window ? metricBuckets(windows, now) : [];
+      const buckets = metric.window ? metricBuckets(windows, sessionStart, now) : [];
       const activeBucket = buckets[buckets.length - 1];
       const daily = values.find(
         (item) =>

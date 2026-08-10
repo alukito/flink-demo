@@ -3,6 +3,7 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   formatJakartaBucketRange,
   formatJakartaBucketStart,
+  METRIC_BUCKET_COUNT,
   type MetricBucket,
 } from '../lib/metricBuckets';
 
@@ -14,6 +15,7 @@ interface MetricBarChartProps {
 
 const CHART_HEIGHT = 150;
 const MARGIN = { top: 12, right: 8, bottom: 32, left: 64 };
+const SLOT_KEYS = Array.from({ length: METRIC_BUCKET_COUNT }, (_, index) => String(index));
 
 export function MetricBarChart({ buckets, title, formatValue }: MetricBarChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -38,7 +40,7 @@ export function MetricBarChart({ buckets, title, formatValue }: MetricBarChartPr
     const innerHeight = CHART_HEIGHT - MARGIN.top - MARGIN.bottom;
     const maxValue = Math.max(1, max(buckets, (bucket) => bucket.value) ?? 0);
     const x = scaleBand<string>()
-      .domain(buckets.map((bucket) => bucket.windowEnd))
+      .domain(SLOT_KEYS)
       .range([0, innerWidth])
       .padding(0.18);
     const y = scaleLinear().domain([0, maxValue]).nice().range([innerHeight, 0]);
@@ -67,8 +69,18 @@ export function MetricBarChart({ buckets, title, formatValue }: MetricBarChartPr
           <line x1={0} x2={chart.x.range()[1]} />
           <text x={-6} dy="0.32em" textAnchor="end">{formatValue(tick)}</text>
         </g>)}
+        {SLOT_KEYS.map((slot) => <rect
+          key={slot}
+          className="metric-bucket-empty-slot"
+          x={chart.x(slot) ?? 0}
+          y={0}
+          width={chart.x.bandwidth()}
+          height={chart.innerHeight}
+          pointerEvents="none"
+          aria-hidden="true"
+        />)}
         {buckets.map((bucket, index) => {
-          const x = chart.x(bucket.windowEnd) ?? 0;
+          const x = chart.x(SLOT_KEYS[index]) ?? 0;
           const barHeight = chart.innerHeight - chart.y(bucket.value);
           const range = formatJakartaBucketRange(bucket.windowEnd) ?? bucket.windowEnd;
           const label = `${range}: ${formatValue(bucket.value)}`;

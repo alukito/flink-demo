@@ -52,7 +52,15 @@ export function activeWindowEnd(now = new Date()): string {
   return windowEndIso((Math.floor(now.getTime() / FIVE_MINUTES_MS) + 1) * FIVE_MINUTES_MS);
 }
 
-export function metricBuckets(stats: readonly MetricSnapshot[], now = new Date()): MetricBucket[] {
+export function dashboardSessionStart(now = new Date()): string {
+  return activeWindowEnd(now);
+}
+
+export function metricBuckets(
+  stats: readonly MetricSnapshot[],
+  sessionStart: string,
+  now = new Date(),
+): MetricBucket[] {
   const snapshotsByWindowEnd = new Map<number, MetricSnapshot>();
   for (const snapshot of stats) {
     const windowEnd = timestamp(snapshot.window_end);
@@ -60,8 +68,14 @@ export function metricBuckets(stats: readonly MetricSnapshot[], now = new Date()
   }
 
   const activeEnd = timestamp(activeWindowEnd(now))!;
-  return Array.from({ length: METRIC_BUCKET_COUNT }, (_, index) => {
-    const windowEnd = activeEnd - (METRIC_BUCKET_COUNT - 1 - index) * FIVE_MINUTES_MS;
+  const sessionEnd = timestamp(sessionStart) ?? activeEnd;
+  const earliestEnd = Math.min(
+    activeEnd,
+    Math.max(sessionEnd, activeEnd - (METRIC_BUCKET_COUNT - 1) * FIVE_MINUTES_MS),
+  );
+  const elapsedBucketCount = Math.floor((activeEnd - earliestEnd) / FIVE_MINUTES_MS) + 1;
+  return Array.from({ length: elapsedBucketCount }, (_, index) => {
+    const windowEnd = earliestEnd + index * FIVE_MINUTES_MS;
     const snapshot = snapshotsByWindowEnd.get(windowEnd);
     return {
       start: windowEndIso(windowEnd - FIVE_MINUTES_MS),
