@@ -1,74 +1,72 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSession } from '../context/SessionContext';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { useEvents } from '../context/EventContext';
 import {
-  listShipperJobs, pickJob, deliverJob,
+  listShipperJobs, listShipperDeliveries, pickJob, deliverJob,
 } from '../api/client';
+import {
+  copyDeliveries,
+  secondsUntilReady,
+  type Delivery,
+  type ShipperDeliveries,
+} from '../lib/deliveries';
+import { isShipperQueueEvent } from '../lib/orderEvents';
 
-interface OrderItem {
-  product_id: string; product_name: string; quantity: number; unit_price: number;
-}
-
-interface Order {
-  id: string; buyer_id: string; seller_id: string;
-  items: OrderItem[]; total_amount: number; shipping_address: string;
-  status: string; created_at: string;
-}
+const emptyDeliveries: ShipperDeliveries = { active: [], history: [] };
 
 export default function Shipper() {
-  const { name, token, clearSession } = useSession();
+  const { id, name, token, clearSession } = useSession();
   const navigate = useNavigate();
   const { events, addEvent } = useEvents();
   useWebSocket(addEvent);
 
-  const [jobs, setJobs] = useState<Order[]>([]);
-  const [pickedOrders, setPickedOrders] = useState<Record<string, number>>({});
+  const [jobs, setJobs] = useState<Delivery[]>([]);
+  const [deliveries, setDeliveries] = useState<ShipperDeliveries>(emptyDeliveries);
+  const [now, setNow] = useState(() => new Date());
   const [error, setError] = useState('');
   const [pickingId, setPickingId] = useState<string | null>(null);
   const [deliveringId, setDeliveringId] = useState<string | null>(null);
-  const countdownRef = useRef<number | null>(null);
 
   const loadJobs = useCallback(async () => {
     if (!token) return;
     const resp = await listShipperJobs(token);
-    if (resp.ok) setJobs(await resp.json());
+    if (resp.ok) setJobs(await resp.json() as Delivery[]);
   }, [token]);
 
-  useEffect(() => { loadJobs(); }, [loadJobs]);
+  const loadDeliveries = useCallback(async () => {
+    if (!token) return;
+    const resp = await listShipperDeliveries(token);
+    if (resp.ok) setDeliveries(copyDeliveries(await resp.json() as ShipperDeliveries));
+  }, [token]);
+
+  const loadShipperState = useCallback(async () => {
+    await Promise.all([loadJobs(), loadDeliveries()]);
+  }, [loadDeliveries, loadJobs]);
 
   useEffect(() => {
-    if (events.some(e => e.event_type === 'order.confirmed')) loadJobs();
-  }, [events, loadJobs]);
+    loadShipperState();
+  }, [loadShipperState]);
 
   useEffect(() => {
-    const hasActiveCountdowns = Object.values(pickedOrders).some((s) => s > 0);
-    if (!hasActiveCountdowns) {
-      if (countdownRef.current) {
-        clearInterval(countdownRef.current);
-        countdownRef.current = null;
-      }
+    const pageTimer = window.setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(pageTimer);
+  }, []);
+
+  useEffect(() => {
+    const newestEvent = events[0];
+    if (!newestEvent) return;
+
+    if (isShipperQueueEvent(newestEvent)) {
+      loadShipperState();
       return;
     }
-    if (!countdownRef.current) {
-      countdownRef.current = window.setInterval(() => {
-        setPickedOrders((prev) => {
-          const next: Record<string, number> = {};
-          for (const [id, seconds] of Object.entries(prev)) {
-            next[id] = Math.max(0, seconds - 1);
-          }
-          return next;
-        });
-      }, 1000);
+
+    if (newestEvent.event_type === 'shipment.delivered' && newestEvent.payload.shipper_id === id) {
+      loadDeliveries();
     }
-    return () => {
-      if (countdownRef.current) {
-        clearInterval(countdownRef.current);
-        countdownRef.current = null;
-      }
-    };
-  }, [pickedOrders]);
+  }, [events, id, loadDeliveries, loadShipperState]);
 
   const handlePickJob = async (orderId: string) => {
     if (!token || pickingId) return;
@@ -77,36 +75,24 @@ export default function Shipper() {
     try {
       const resp = await pickJob(token, orderId);
       if (!resp.ok) {
-        if (resp.status === 409) {
-          setError('Job already picked by another shipper');
-        } else {
-          setError(await resp.text());
-        }
-        loadJobs();
-        return;
+        setError(resp.status === 409 ? 'Job already picked by another shipper' : await resp.text());
       }
-      const countdown = Math.floor(Math.random() * 11) + 5;
-      setPickedOrders((prev) => ({ ...prev, [orderId]: countdown }));
-      setJobs((prev) => prev.filter((j) => j.id !== orderId));
     } finally {
       setPickingId(null);
+      await loadShipperState();
     }
   };
 
   const handleDeliver = async (orderId: string) => {
     if (!token || deliveringId) return;
+    setError('');
     setDeliveringId(orderId);
     try {
       const resp = await deliverJob(token, orderId);
-      if (resp.ok) {
-        setPickedOrders((prev) => {
-          const next = { ...prev };
-          delete next[orderId];
-          return next;
-        });
-      }
+      if (!resp.ok) setError(await resp.text());
     } finally {
       setDeliveringId(null);
+      await loadShipperState();
     }
   };
 
@@ -115,8 +101,8 @@ export default function Shipper() {
     navigate('/');
   };
 
-  const activeJobs = Object.entries(pickedOrders).filter(([, s]) => s > 0);
-  const deliveredJobs = Object.entries(pickedOrders).filter(([, s]) => s === 0);
+  const history = [...deliveries.history].sort((first, second) =>
+    (Date.parse(second.delivered_at ?? '') || 0) - (Date.parse(first.delivered_at ?? '') || 0));
 
   return (
     <div style={{ padding: '20px', maxWidth: '900px', margin: '0 auto' }}>
@@ -127,83 +113,114 @@ export default function Shipper() {
 
       {error && <p style={{ color: 'red', marginBottom: '16px' }}>{error}</p>}
 
-      {/* Available Jobs */}
-      <div style={{ background: 'white', borderRadius: '8px', padding: '20px', marginBottom: '20px', border: '1px solid #e5e7eb' }}>
+      <section style={{ background: 'white', borderRadius: '8px', padding: '20px', marginBottom: '20px', border: '1px solid #e5e7eb' }}>
         <h2>Available Jobs</h2>
         <div style={{ marginTop: '12px' }}>
           {jobs.length === 0 ? (
             <p style={{ color: '#9ca3af' }}>No jobs available. Waiting for sellers to confirm orders...</p>
-          ) : (
-            jobs.map((job) => (
-              <div key={job.id} style={{
+          ) : jobs.map((job) => (
+            <article key={job.id} style={{
+              padding: '16px', borderRadius: '6px', border: '1px solid #d1d5db',
+              marginBottom: '12px', background: '#f9fafb',
+            }}>
+              <div style={{ fontWeight: 'bold' }}>Delivery to {job.buyer_name ?? job.buyer_id}</div>
+              <div style={{ marginTop: '8px', fontSize: '14px', color: '#6b7280' }}>
+                {job.items.map((item) => <div key={item.product_id}>{item.quantity}x {item.product_name}</div>)}
+              </div>
+              <div style={{ marginTop: '8px', color: '#6b7280', fontSize: '12px' }}>
+                Seller: {job.seller_name ?? job.seller_id} · Destination: {job.shipping_address}
+              </div>
+              <div style={{ marginTop: '4px', color: '#6b7280', fontSize: '12px' }}>
+                Created: {new Date(job.created_at).toLocaleString()}
+              </div>
+              <button
+                onClick={() => handlePickJob(job.id)}
+                disabled={pickingId === job.id}
+                style={{ marginTop: '12px', padding: '6px 20px' }}
+              >
+                {pickingId === job.id ? 'Picking...' : 'Pick Up Job'}
+              </button>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section style={{ background: 'white', borderRadius: '8px', padding: '20px', marginBottom: '20px', border: '1px solid #fbbf24' }}>
+        <h2>My Active Deliveries</h2>
+        <div style={{ marginTop: '12px' }}>
+          {deliveries.active.length === 0 ? (
+            <p style={{ color: '#9ca3af' }}>No active deliveries.</p>
+          ) : deliveries.active.map((delivery) => {
+            const remainingSeconds = secondsUntilReady(delivery.ready_at, now);
+            const readyAt = Date.parse(delivery.ready_at ?? '');
+            const isReady = Number.isFinite(readyAt) && remainingSeconds === 0;
+
+            return (
+              <article key={delivery.id} style={{
                 padding: '16px', borderRadius: '6px', border: '1px solid #d1d5db',
-                marginBottom: '12px', background: '#f9fafb',
+                marginBottom: '12px', background: isReady ? '#ecfdf5' : '#fffbeb',
               }}>
-                <div style={{ fontWeight: 'bold' }}>Delivery to {job.buyer_id}</div>
+                <div style={{ fontWeight: 'bold' }}>Delivery to {delivery.buyer_name ?? delivery.buyer_id}</div>
                 <div style={{ marginTop: '8px', fontSize: '14px', color: '#6b7280' }}>
-                  {job.items.map((item, i) => (
-                    <div key={i}>{item.quantity}x {item.product_name}</div>
-                  ))}
+                  {delivery.items.map((item) => <div key={item.product_id}>{item.quantity}x {item.product_name}</div>)}
                 </div>
                 <div style={{ marginTop: '8px', color: '#6b7280', fontSize: '12px' }}>
-                  Ship to: {job.shipping_address}
+                  Seller: {delivery.seller_name ?? delivery.seller_id} · Destination: {delivery.shipping_address}
+                </div>
+                <div style={{ marginTop: '4px', color: '#6b7280', fontSize: '12px' }}>
+                  Picked: {delivery.picked_at ? new Date(delivery.picked_at).toLocaleString() : 'unknown'} · Ready: {delivery.ready_at ? new Date(delivery.ready_at).toLocaleString() : 'unknown'}
+                </div>
+                <div style={{ color: isReady ? '#059669' : '#d97706', marginTop: '8px' }}>
+                  {isReady ? 'Ready to deliver' : `Ready in ${remainingSeconds}s`}
                 </div>
                 <button
-                  onClick={() => handlePickJob(job.id)}
-                  disabled={pickingId === job.id}
-                  style={{ marginTop: '12px', padding: '6px 20px' }}
+                  onClick={() => handleDeliver(delivery.id)}
+                  disabled={!isReady || deliveringId === delivery.id}
+                  style={{ marginTop: '12px', padding: '6px 20px', background: isReady ? '#059669' : undefined }}
                 >
-                  {pickingId === job.id ? 'Picking...' : 'Pick Up Job'}
+                  {deliveringId === delivery.id ? 'Delivering...' : isReady ? 'Mark Delivered' : `Mark Delivered (wait ${remainingSeconds}s)`}
                 </button>
-              </div>
-            ))
-          )}
+              </article>
+            );
+          })}
         </div>
-      </div>
+      </section>
 
-      {/* In Transit (countdown active) */}
-      {activeJobs.length > 0 && (
-        <div style={{ background: 'white', borderRadius: '8px', padding: '20px', marginBottom: '20px', border: '1px solid #fbbf24' }}>
-          <h2>In Transit</h2>
-          {activeJobs.map(([orderId, seconds]) => (
-            <div key={orderId} style={{
-              padding: '16px', borderRadius: '6px', border: '1px solid #d1d5db',
-              marginBottom: '12px', background: '#fffbeb',
-            }}>
-              <div style={{ fontWeight: 'bold' }}>Order {orderId.slice(0, 8)}...</div>
-              <div style={{ fontSize: '24px', color: '#d97706', marginTop: '8px' }}>
-                Delivering in {seconds}s...
-              </div>
-              <button disabled style={{ marginTop: '12px', padding: '6px 20px', opacity: 0.5 }}>
-                Mark Delivered (wait {seconds}s)
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
+      <section style={{ background: 'white', borderRadius: '8px', padding: '20px', border: '1px solid #059669' }}>
+        <h2>My Delivery History</h2>
+        <div style={{ marginTop: '12px' }}>
+          {history.length === 0 ? (
+            <p style={{ color: '#9ca3af' }}>No delivered jobs yet.</p>
+          ) : history.map((delivery) => {
+            const pickedAt = Date.parse(delivery.picked_at ?? '');
+            const deliveredAt = Date.parse(delivery.delivered_at ?? '');
+            const elapsedSeconds = Number.isFinite(pickedAt) && Number.isFinite(deliveredAt)
+              ? Math.max(0, Math.ceil((deliveredAt - pickedAt) / 1000))
+              : null;
 
-      {/* Ready to Deliver (countdown finished) */}
-      {deliveredJobs.length > 0 && (
-        <div style={{ background: 'white', borderRadius: '8px', padding: '20px', border: '1px solid #059669' }}>
-          <h2>Ready to Deliver</h2>
-          {deliveredJobs.map(([orderId]) => (
-            <div key={orderId} style={{
-              padding: '16px', borderRadius: '6px', border: '1px solid #d1d5db',
-              marginBottom: '12px', background: '#ecfdf5',
-            }}>
-              <div style={{ fontWeight: 'bold' }}>Order {orderId.slice(0, 8)}...</div>
-              <div style={{ color: '#059669', marginTop: '4px' }}>Transit complete!</div>
-              <button
-                onClick={() => handleDeliver(orderId)}
-                disabled={deliveringId === orderId}
-                style={{ marginTop: '12px', padding: '6px 20px', background: '#059669' }}
-              >
-                {deliveringId === orderId ? 'Delivering...' : 'Mark Delivered'}
-              </button>
-            </div>
-          ))}
+            return (
+              <article key={delivery.id} style={{
+                padding: '16px', borderRadius: '6px', border: '1px solid #d1d5db',
+                marginBottom: '12px', background: '#f0fdf4',
+              }}>
+                <div style={{ fontWeight: 'bold' }}>Delivered to {delivery.buyer_name ?? delivery.buyer_id}</div>
+                <div style={{ marginTop: '8px', fontSize: '14px', color: '#6b7280' }}>
+                  {delivery.items.map((item) => <div key={item.product_id}>{item.quantity}x {item.product_name}</div>)}
+                </div>
+                <div style={{ marginTop: '8px', color: '#6b7280', fontSize: '12px' }}>
+                  Seller: {delivery.seller_name ?? delivery.seller_id} · Destination: {delivery.shipping_address}
+                </div>
+                <div style={{ marginTop: '4px', color: '#6b7280', fontSize: '12px' }}>
+                  Picked: {delivery.picked_at ? new Date(delivery.picked_at).toLocaleString() : 'unknown'} · Delivered: {delivery.delivered_at ? new Date(delivery.delivered_at).toLocaleString() : 'unknown'}
+                </div>
+                <div style={{ color: '#059669', marginTop: '8px' }}>
+                  Elapsed: {elapsedSeconds === null ? 'unknown' : `${elapsedSeconds}s`}
+                </div>
+              </article>
+            );
+          })}
         </div>
-      )}
+      </section>
     </div>
   );
 }

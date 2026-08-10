@@ -76,6 +76,10 @@ export async function listShipperJobs(token: string): Promise<Response> {
   return apiGet('/shipper/jobs', token);
 }
 
+export async function listShipperDeliveries(token: string): Promise<Response> {
+  return apiGet('/shipper/deliveries', token);
+}
+
 export async function pickJob(token: string, orderId: string): Promise<Response> {
   return apiPost(`/shipper/jobs/${orderId}/pick`, token);
 }
