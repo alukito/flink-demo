@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSession } from '../context/SessionContext';
 import { useWebSocket } from '../hooks/useWebSocket';
@@ -13,8 +13,17 @@ import {
   type ShipperDeliveries,
 } from '../lib/deliveries';
 import { isShipperQueueEvent } from '../lib/orderEvents';
+import { loadLatestShipperSnapshot } from '../lib/shipperRefresh';
 
-const emptyDeliveries: ShipperDeliveries = { active: [], history: [] };
+interface ShipperState {
+  jobs: Delivery[];
+  deliveries: ShipperDeliveries;
+}
+
+const emptyShipperState: ShipperState = {
+  jobs: [],
+  deliveries: { active: [], history: [] },
+};
 
 export default function Shipper() {
   const { id, name, token, clearSession } = useSession();
@@ -22,28 +31,29 @@ export default function Shipper() {
   const { events, addEvent } = useEvents();
   useWebSocket(addEvent);
 
-  const [jobs, setJobs] = useState<Delivery[]>([]);
-  const [deliveries, setDeliveries] = useState<ShipperDeliveries>(emptyDeliveries);
+  const [shipperState, setShipperState] = useState<ShipperState>(emptyShipperState);
   const [now, setNow] = useState(() => new Date());
   const [error, setError] = useState('');
   const [pickingId, setPickingId] = useState<string | null>(null);
   const [deliveringId, setDeliveringId] = useState<string | null>(null);
-
-  const loadJobs = useCallback(async () => {
-    if (!token) return;
-    const resp = await listShipperJobs(token);
-    if (resp.ok) setJobs(await resp.json() as Delivery[]);
-  }, [token]);
-
-  const loadDeliveries = useCallback(async () => {
-    if (!token) return;
-    const resp = await listShipperDeliveries(token);
-    if (resp.ok) setDeliveries(copyDeliveries(await resp.json() as ShipperDeliveries));
-  }, [token]);
+  const latestRefreshGeneration = useRef(0);
+  const { jobs, deliveries } = shipperState;
 
   const loadShipperState = useCallback(async () => {
-    await Promise.all([loadJobs(), loadDeliveries()]);
-  }, [loadDeliveries, loadJobs]);
+    if (!token) return;
+
+    const generation = ++latestRefreshGeneration.current;
+    await loadLatestShipperSnapshot<Delivery[], ShipperDeliveries>({
+      generation,
+      getLatestGeneration: () => latestRefreshGeneration.current,
+      listJobs: () => listShipperJobs(token),
+      listDeliveries: () => listShipperDeliveries(token),
+      commit: ({ jobs, deliveries }) => setShipperState({
+        jobs,
+        deliveries: copyDeliveries(deliveries),
+      }),
+    });
+  }, [token]);
 
   useEffect(() => {
     loadShipperState();
@@ -64,9 +74,9 @@ export default function Shipper() {
     }
 
     if (newestEvent.event_type === 'shipment.delivered' && newestEvent.payload.shipper_id === id) {
-      loadDeliveries();
+      loadShipperState();
     }
-  }, [events, id, loadDeliveries, loadShipperState]);
+  }, [events, id, loadShipperState]);
 
   const handlePickJob = async (orderId: string) => {
     if (!token || pickingId) return;
