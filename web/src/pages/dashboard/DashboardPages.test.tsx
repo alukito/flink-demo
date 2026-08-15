@@ -7,12 +7,22 @@ import { useDashboard } from '../../dashboard/DashboardContext';
 import { DashboardLivePage } from './DashboardLivePage';
 import { DashboardPatternsPage } from './DashboardPatternsPage';
 import { DashboardWindowsPage } from './DashboardWindowsPage';
+import '../../styles/base.css';
 
 vi.mock('../../dashboard/DashboardContext', () => ({
   useDashboard: vi.fn(),
 }));
 
 const now = new Date('2026-08-15T03:04:30.000Z');
+
+function cssRule(selector: string): CSSStyleRule {
+  const rule = Array.from(document.styleSheets)
+    .flatMap((sheet) => Array.from(sheet.cssRules))
+    .find((candidate): candidate is CSSStyleRule =>
+      candidate instanceof CSSStyleRule && candidate.selectorText.replace(/\s+/g, ' ') === selector);
+  if (!rule) throw new Error(`Missing CSS rule: ${selector}`);
+  return rule;
+}
 
 beforeEach(() => {
   vi.mocked(useDashboard).mockReturnValue({
@@ -138,4 +148,40 @@ test('represents the empty duration message as an item in its labelled list', ()
 
   expect(within(screen.getByRole('list', { name: 'Checkout to delivery elapsed seconds per completed order' }))
     .getByRole('listitem')).toHaveTextContent('Waiting for a completed delivery');
+});
+
+test('keeps Level 3 histories out of internal scroll containers', () => {
+  expect(cssRule('.trending-products').style.overflow).toBe('hidden');
+  expect(cssRule('.delivery-duration-chart').style.overflowX).toBe('hidden');
+});
+
+test('uses a twelve-pixel minimum for projector chart labels and metadata', () => {
+  expect(cssRule('.metric-bucket-y-tick text, .metric-bucket-x-label').style.fontSize).toBe('12px');
+  expect(cssRule('.metric-bucket-tooltip').style.fontSize).toBe('0.75rem');
+  expect(cssRule('.dashboard-metric-card__header span, .dashboard-pattern-card > header span').style.fontSize).toBe('0.75rem');
+  expect(cssRule('.delivery-duration-chart__item small').style.fontSize).toBe('0.75rem');
+});
+
+test('uses the supplied raised-shadow token for dashboard cards', () => {
+  expect(cssRule('.dashboard-metric-card, .dashboard-pattern-card').style.boxShadow).toBe('var(--shadow-raised)');
+});
+
+test('bounds trending products to a clearly labelled top-five view', () => {
+  const dashboard = vi.mocked(useDashboard)();
+  vi.mocked(useDashboard).mockReturnValue({
+    ...dashboard,
+    recentAlerts: Array.from({ length: 6 }, (_, index) => ({
+      alert_id: `trend-${index}`,
+      pattern: 'trending_product',
+      detected_at: `2026-08-15T02:${String(40 + index).padStart(2, '0')}:00.000Z`,
+      detail: { product_id: `product-${index}`, product_name: `Product ${String.fromCharCode(65 + index)}` },
+    })),
+  });
+
+  render(<DashboardPatternsPage />);
+
+  const table = screen.getByRole('table', { name: 'Trending products' });
+  expect(screen.getByText('Top 5 by count')).toBeVisible();
+  expect(within(table).getAllByRole('row')).toHaveLength(6);
+  expect(within(table).queryByText('Product F')).not.toBeInTheDocument();
 });

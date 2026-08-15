@@ -14,6 +14,7 @@ export function DashboardPatternsPage() {
   const abandonedCarts = useMemo(() => bucketAlertCounts(recentAlerts, 'abandoned_cart', now), [now, recentAlerts]);
   const slowDelivery = useMemo(() => bucketAlertCounts(recentAlerts, 'slow_delivery', now), [now, recentAlerts]);
   const trendingProducts = useMemo(() => trendingProductCounts(recentAlerts), [recentAlerts]);
+  const visibleTrendingProducts = trendingProducts.slice(0, 5);
   const surge = useMemo(() => latestOrderSurge(recentAlerts), [recentAlerts]);
   const durations = useMemo(() => deliveryDurations(recentAlerts), [recentAlerts]);
 
@@ -40,14 +41,14 @@ export function DashboardPatternsPage() {
         </article>
 
         <article className="dashboard-pattern-card dashboard-pattern-card--trending" aria-labelledby="trending-products-heading">
-          <header><h3 id="trending-products-heading">Trending products</h3><span>Qualified alerts</span></header>
+          <header><h3 id="trending-products-heading">Trending products</h3><span>Top 5 by count</span></header>
           <div className="trending-products">
             <table aria-label="Trending products">
               <thead><tr><th scope="col">Product</th><th scope="col">Count</th></tr></thead>
               <tbody>
-                {trendingProducts.length === 0 ? (
+                {visibleTrendingProducts.length === 0 ? (
                   <tr><td colSpan={2}>Waiting for product trends…</td></tr>
-                ) : trendingProducts.map((product) => (
+                ) : visibleTrendingProducts.map((product) => (
                   <tr key={product.productId}>
                     <td title={product.productId}>{product.productName}</td>
                     <td>{product.count.toLocaleString('id-ID')}</td>
