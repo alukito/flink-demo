@@ -13,14 +13,15 @@ interface MetricBarChartProps {
   formatValue: (value: number) => string;
 }
 
-const CHART_HEIGHT = 150;
-const MARGIN = { top: 12, right: 8, bottom: 32, left: 64 };
+const CHART_HEIGHT = 128;
+const MARGIN = { top: 8, right: 6, bottom: 28, left: 56 };
 const SLOT_KEYS = Array.from({ length: METRIC_BUCKET_COUNT }, (_, index) => String(index));
 
 export function MetricBarChart({ buckets, title, formatValue }: MetricBarChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
-  const [activeWindowEnd, setActiveWindowEnd] = useState<string | null>(null);
+  const [focusedWindowEnd, setFocusedWindowEnd] = useState<string | null>(null);
+  const [hoveredWindowEnd, setHoveredWindowEnd] = useState<string | null>(null);
   const titleId = useId();
   const tooltipId = useId();
 
@@ -47,6 +48,7 @@ export function MetricBarChart({ buckets, title, formatValue }: MetricBarChartPr
     return { innerHeight, x, y, yTicks: y.ticks(3) };
   }, [buckets, width]);
 
+  const activeWindowEnd = hoveredWindowEnd ?? focusedWindowEnd;
   const activeBucket = activeWindowEnd === null
     ? null
     : buckets.find((bucket) => bucket.windowEnd === activeWindowEnd) ?? null;
@@ -94,10 +96,10 @@ export function MetricBarChart({ buckets, title, formatValue }: MetricBarChartPr
               tabIndex={0}
               aria-label={label}
               aria-describedby={tooltipId}
-              onBlur={() => setActiveWindowEnd(null)}
-              onFocus={() => setActiveWindowEnd(bucket.windowEnd)}
-              onMouseEnter={() => setActiveWindowEnd(bucket.windowEnd)}
-              onMouseLeave={() => setActiveWindowEnd(null)}
+              onBlur={() => setFocusedWindowEnd(null)}
+              onFocus={() => setFocusedWindowEnd(bucket.windowEnd)}
+              onPointerEnter={() => setHoveredWindowEnd(bucket.windowEnd)}
+              onPointerLeave={() => setHoveredWindowEnd(null)}
             >
               <title>{label}</title>
             </rect>
