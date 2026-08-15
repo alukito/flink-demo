@@ -1,27 +1,17 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useWebSocket } from '../hooks/useWebSocket';
-import { useEvents, isEventEnvelope, isWindowStat, type DashboardMessage, type EventEnvelope, type MetricName, type WindowStat } from '../context/EventContext';
-import { createSession } from '../api/client';
+import { useMemo } from 'react';
+import type { EventEnvelope, MetricName } from '../context/EventContext';
 import { MetricBarChart } from '../components/MetricBarChart';
-import {
-  jakartaDayForWindowEnd,
-  jakartaDateKey,
-  jakartaRefreshSnapshot,
-} from '../lib/jakartaDay';
+import { jakartaDayForWindowEnd } from '../lib/jakartaDay';
 import {
   bucketAlertCounts,
   deliveryDurations,
   latestOrderSurge,
-  readCepAlertMessage,
-  retainRecentAlerts,
   trendingProductCounts,
-  upsertCepAlert,
   type AlertBucket,
   type DeliveryDuration,
-  type CepAlert,
 } from '../lib/cepAlerts';
-import { dashboardSessionStart, metricBuckets } from '../lib/metricBuckets';
-import { requestFreshDashboardToken } from '../lib/dashboardToken';
+import { metricBuckets } from '../lib/metricBuckets';
+import { DashboardProvider, useDashboard } from '../dashboard/DashboardContext';
 
 const METRICS: Array<{ name: MetricName; label: string; window: boolean; daily: boolean; rupiah?: boolean }> = [
   { name: 'listings_count', label: 'Listings', window: true, daily: false },
@@ -56,74 +46,8 @@ function DurationChart({ points }: { points: DeliveryDuration[] }) {
   </div>;
 }
 
-export default function Dashboard() {
-  const { events, addEvent, clearEvents } = useEvents();
-  const [dashToken, setDashToken] = useState<string | null>(null);
-  const [stats, setStats] = useState<WindowStat[]>([]);
-  const [alerts, setAlerts] = useState<CepAlert[]>([]);
-  const [jakartaDay, setJakartaDay] = useState(() => jakartaDateKey(new Date()));
-  const [sessionStart] = useState(() => dashboardSessionStart(new Date()));
-  const [now, setNow] = useState(() => new Date());
-  const onMessage = useCallback((message: DashboardMessage) => {
-    const cepAlert = readCepAlertMessage(message);
-    if (cepAlert !== undefined) {
-      if (cepAlert) setAlerts((previous) => upsertCepAlert(previous, cepAlert));
-      return;
-    }
-    if (isEventEnvelope(message)) { addEvent(message); return; }
-    if (!isWindowStat(message)) return;
-    setStats((previous) => {
-      const unique = previous.filter((item) => !(item.metric === message.metric && item.scope === message.scope && item.window_end === message.window_end));
-      const next = [...unique, message];
-      const windows = next.filter((item) => item.scope === 'window').sort((a, b) => a.window_end.localeCompare(b.window_end));
-      const retainedWindows = METRICS.flatMap(({ name }) => windows.filter((item) => item.metric === name).slice(-24));
-      const retainedDaily = METRICS.flatMap(({ name }) => next.filter((item) => item.metric === name && item.scope === 'daily').sort((a, b) => b.window_end.localeCompare(a.window_end)).slice(0, 1));
-      return [...retainedWindows, ...retainedDaily];
-    });
-  }, [addEvent]);
-  const { connected } = useWebSocket<DashboardMessage>(onMessage, dashToken);
-
-  useEffect(() => {
-    let disposed = false;
-    const name = `dashboard-${Math.random().toString(36).slice(2, 8)}`;
-    requestFreshDashboardToken(localStorage, createSession, name)
-      .then((token) => {
-        if (!disposed) setDashToken(token);
-      })
-      .catch((error) => {
-        if (!disposed) console.error('[dashboard] failed to create session', error);
-      });
-    return () => {
-      disposed = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    let timer: ReturnType<typeof setTimeout>;
-    const refreshAndSchedule = () => {
-      const snapshot = jakartaRefreshSnapshot(new Date());
-      setJakartaDay(snapshot.day);
-      timer = setTimeout(() => {
-        refreshAndSchedule();
-      }, snapshot.delay + 50);
-    };
-    refreshAndSchedule();
-    return () => clearTimeout(timer);
-  }, []);
-
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(new Date()), 5_000);
-    return () => window.clearInterval(timer);
-  }, []);
-
-  useEffect(() => {
-    const prune = () => setAlerts((previous) => retainRecentAlerts(previous));
-    const timer = window.setInterval(prune, 60_000);
-    return () => window.clearInterval(timer);
-  }, []);
-
-  const grouped = useMemo(() => Object.fromEntries(METRICS.map(({ name }) => [name, stats.filter((item) => item.metric === name)])) as Record<MetricName, WindowStat[]>, [stats]);
-  const recentAlerts = useMemo(() => retainRecentAlerts(alerts), [alerts]);
+function DashboardContent() {
+  const { clearAll, connectionState, events, groupedStats: grouped, jakartaDay, now, recentAlerts, sessionStart } = useDashboard();
   const abandonedCartBuckets = useMemo(() => bucketAlertCounts(recentAlerts, 'abandoned_cart'), [recentAlerts]);
   const deliveryDelayBuckets = useMemo(() => bucketAlertCounts(recentAlerts, 'slow_delivery'), [recentAlerts]);
   const trendingProducts = useMemo(() => trendingProductCounts(recentAlerts), [recentAlerts]);
@@ -131,7 +55,7 @@ export default function Dashboard() {
   const durations = useMemo(() => deliveryDurations(recentAlerts), [recentAlerts]);
 
   return <main className="dashboard">
-    <header className="dashboard-header"><h1>Stream Processing Dashboard</h1><div><span className={connected ? 'connection connected' : 'connection'}>{connected ? 'Connected' : dashToken ? 'Reconnecting…' : 'Connecting…'}</span><button onClick={() => { clearEvents(); setStats([]); setAlerts([]); }}>Clear</button></div></header>
+    <header className="dashboard-header"><h1>Stream Processing Dashboard</h1><div><span className={connectionState === 'live' ? 'connection connected' : 'connection'}>{connectionState === 'live' ? 'Connected' : connectionState === 'reconnecting' ? 'Reconnecting…' : 'Connecting…'}</span><button onClick={clearAll}>Clear</button></div></header>
     <section><h2>Level 1 — Live Event Feed</h2><p>Raw Kafka events, forwarded without stateful processing.</p><div className="event-feed">{events.length === 0 ? <div className="empty">Waiting for events…</div> : events.map((event) => <EventRow key={event.event_id} event={event} />)}</div></section>
     <section><h2>Level 2 — Stateful Aggregations</h2><p>Five-minute aligned windows update every five seconds; daily totals reset at Jakarta midnight (WIB).</p><div className="metric-grid">{METRICS.map((metric) => {
       const values = grouped[metric.name];
@@ -154,4 +78,8 @@ export default function Dashboard() {
       <article className="metric-card cep-duration-card"><h3>Checkout to delivery</h3><p className="cep-card-note">Elapsed seconds per completed order</p><DurationChart points={durations} /></article>
     </div></section>
   </main>;
+}
+
+export default function Dashboard() {
+  return <DashboardProvider><DashboardContent /></DashboardProvider>;
 }
