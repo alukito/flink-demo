@@ -5,6 +5,7 @@ import { createMemoryRouter, Navigate, RouterProvider } from 'react-router-dom';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { DashboardLayout } from './DashboardLayout';
 import { useDashboard } from './DashboardContext';
+import '../styles/base.css';
 
 vi.mock('./DashboardContext', () => ({
   useDashboard: vi.fn(),
@@ -43,6 +44,15 @@ function renderDashboard(initialEntry = '/dashboard') {
 }
 
 const clearAll = vi.fn();
+
+function cssRule(selector: string): CSSStyleRule {
+  const rule = Array.from(document.styleSheets)
+    .flatMap((sheet) => Array.from(sheet.cssRules))
+    .find((candidate): candidate is CSSStyleRule =>
+      candidate instanceof CSSStyleRule && candidate.selectorText === selector);
+  if (!rule) throw new Error(`Missing CSS rule: ${selector}`);
+  return rule;
+}
 
 beforeEach(() => {
   clearAll.mockReset();
@@ -90,4 +100,14 @@ test('confirms and clears all dashboard data once', async () => {
 
   expect(clearAll).toHaveBeenCalledTimes(1);
   expect(screen.queryByRole('dialog', { name: 'Clear dashboard data?' })).not.toBeInTheDocument();
+});
+
+test('pins the header and reserves its height before dashboard content', () => {
+  const shell = cssRule('.dashboard-shell').style;
+  const header = cssRule('.dashboard-shell__header').style;
+
+  expect(header.position).toBe('fixed');
+  expect(header.inset).toBe('0 0 auto');
+  expect(header.minBlockSize).toBe('var(--dashboard-header-height)');
+  expect(shell.paddingTop).toBe('var(--dashboard-header-height)');
 });
