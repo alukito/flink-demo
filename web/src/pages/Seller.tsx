@@ -8,6 +8,7 @@ import {
 } from '../api/client';
 import { isSellerOrderEvent } from '../lib/orderEvents';
 import { loadLatestSellerOrders } from '../lib/sellerRefresh';
+import { RoleLayout } from '../components/RoleLayout';
 
 interface Product {
   id: string; name: string; price: number; quantity: number; seller_id: string;
@@ -104,11 +105,13 @@ export default function Seller() {
   };
 
   return (
-    <div style={{ padding: '20px', maxWidth: '900px', margin: '0 auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-        <h1>Seller: {name}</h1>
-        <button onClick={handleLogout}>Logout</button>
-      </div>
+    <RoleLayout
+      roleLabel="Sell"
+      participantName={name ?? 'Participant'}
+      pulseKey={events[0]?.event_id ?? 'initial'}
+      onLogout={handleLogout}
+    >
+      <div className="legacy-role-content">
 
       {/* Product Panel */}
       <div style={{ background: 'white', borderRadius: '8px', padding: '20px', marginBottom: '20px', border: '1px solid #e5e7eb' }}>
@@ -206,6 +209,7 @@ export default function Seller() {
           )}
         </div>
       </div>
-    </div>
+      </div>
+    </RoleLayout>
   );
 }

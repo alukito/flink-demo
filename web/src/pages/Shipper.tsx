@@ -14,6 +14,7 @@ import {
 } from '../lib/deliveries';
 import { isShipperQueueEvent } from '../lib/orderEvents';
 import { loadLatestShipperSnapshot } from '../lib/shipperRefresh';
+import { RoleLayout } from '../components/RoleLayout';
 
 interface ShipperState {
   jobs: Delivery[];
@@ -116,11 +117,13 @@ export default function Shipper() {
     (Date.parse(second.delivered_at ?? '') || 0) - (Date.parse(first.delivered_at ?? '') || 0));
 
   return (
-    <div style={{ padding: '20px', maxWidth: '900px', margin: '0 auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-        <h1>Shipper: {name}</h1>
-        <button onClick={handleLogout}>Logout</button>
-      </div>
+    <RoleLayout
+      roleLabel="Deliver"
+      participantName={name ?? 'Participant'}
+      pulseKey={events[0]?.event_id ?? 'initial'}
+      onLogout={handleLogout}
+    >
+      <div className="legacy-role-content">
 
       {error && <p style={{ color: 'red', marginBottom: '16px' }}>{error}</p>}
 
@@ -232,6 +235,7 @@ export default function Shipper() {
           })}
         </div>
       </section>
-    </div>
+      </div>
+    </RoleLayout>
   );
 }

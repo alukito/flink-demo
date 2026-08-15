@@ -1,18 +1,31 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useRef, useState, type FormEvent } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { createSession, type SessionResponse } from '../api/client';
 import { useSession, type Role } from '../context/SessionContext';
+
+const roles: { role: Role; label: string; description: string }[] = [
+  { role: 'buyer', label: 'Shop as buyer', description: 'Browse, add, and place an order.' },
+  { role: 'seller', label: 'Sell products', description: 'Add products and confirm orders.' },
+  { role: 'shipper', label: 'Deliver orders', description: 'Pick jobs and complete delivery.' },
+];
 
 export default function Landing() {
   const [name, setName] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const nameInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
   const { setSession } = useSession();
 
-  const handleRoleSelect = async (role: Role) => {
+  const handleRoleSelect = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const submitter = (event.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null;
+    const role = submitter?.dataset.role as Role | undefined;
+    if (!role) return;
+
     if (!name.trim()) {
-      setError('Please enter your name first');
+      setError('Enter your display name to continue.');
+      nameInputRef.current?.focus();
       return;
     }
     setLoading(true);
@@ -28,60 +41,59 @@ export default function Landing() {
     }
   };
 
-  const handleDashboard = () => {
-    navigate('/dashboard');
-  };
-
   return (
-    <div style={{ maxWidth: '600px', margin: '100px auto', textAlign: 'center' }}>
-      <h1>Stream Processing Demo</h1>
-      <p>E-commerce simulation with 3 levels of stream processing</p>
-
-      <div style={{ margin: '40px 0' }}>
-        <input
-          type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Enter your display name"
-          style={{ padding: '12px', fontSize: '16px', width: '300px' }}
-          disabled={loading}
-        />
+    <main className="landing">
+      <div className="landing__intro">
+        <span className="landing__eyebrow">Market signal demo</span>
+        <h1>Make the stream move.</h1>
+        <p>Participant actions become live stream events for everyone to see.</p>
       </div>
 
-      {error && <p style={{ color: 'red' }}>{error}</p>}
+      <form className="landing__form" onSubmit={handleRoleSelect} noValidate>
+        <div className="landing__name-field">
+          <label htmlFor="display-name">Display name</label>
+          <input
+            ref={nameInputRef}
+            id="display-name"
+            name="displayName"
+            type="text"
+            autoComplete="name"
+            value={name}
+            onChange={(event) => {
+              setName(event.target.value);
+              if (error === 'Enter your display name to continue.') setError('');
+            }}
+            placeholder="How others will see you"
+            aria-describedby={error ? 'landing-error' : undefined}
+            aria-invalid={Boolean(error)}
+            disabled={loading}
+          />
+        </div>
 
-      <div style={{ display: 'flex', gap: '16px', justifyContent: 'center' }}>
-        <button
-          onClick={() => handleRoleSelect('buyer')}
-          disabled={loading}
-          style={{ padding: '16px 32px', fontSize: '16px', cursor: 'pointer' }}
-        >
-          Buyer
-        </button>
-        <button
-          onClick={() => handleRoleSelect('seller')}
-          disabled={loading}
-          style={{ padding: '16px 32px', fontSize: '16px', cursor: 'pointer' }}
-        >
-          Seller
-        </button>
-        <button
-          onClick={() => handleRoleSelect('shipper')}
-          disabled={loading}
-          style={{ padding: '16px 32px', fontSize: '16px', cursor: 'pointer' }}
-        >
-          Shipper
-        </button>
-      </div>
+        {error && <p id="landing-error" className="landing__error" role="alert">{error}</p>}
 
-      <div style={{ marginTop: '40px' }}>
-        <button
-          onClick={handleDashboard}
-          style={{ padding: '12px 24px', fontSize: '14px', cursor: 'pointer' }}
-        >
-          View Dashboard (no login needed)
-        </button>
+        <fieldset className="landing__roles" disabled={loading}>
+          <legend>Choose how you want to join</legend>
+          <div className="landing__role-grid">
+            {roles.map(({ role, label, description }) => (
+              <button
+                key={role}
+                className="button button--primary landing-role-card"
+                type="submit"
+                data-role={role}
+              >
+                <span className="landing-role-card__label">{label}</span>
+                <span className="landing-role-card__description">{description}</span>
+              </button>
+            ))}
+          </div>
+        </fieldset>
+      </form>
+
+      <div className="landing__presenter">
+        <span>Presenting the demo?</span>
+        <Link className="landing-dashboard-link" to="/dashboard">Open presenter dashboard</Link>
       </div>
-    </div>
+    </main>
   );
 }

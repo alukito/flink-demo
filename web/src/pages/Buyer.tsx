@@ -8,6 +8,7 @@ import {
 } from '../api/client';
 import { cartItemCount } from '../lib/cart';
 import { isBuyerOrderEvent } from '../lib/orderEvents';
+import { RoleLayout } from '../components/RoleLayout';
 
 interface Product {
   id: string; name: string; price: number; quantity: number; seller_id: string; seller_name: string;
@@ -119,9 +120,14 @@ export default function Buyer() {
   };
 
   return (
-    <div style={{ padding: '20px', maxWidth: '900px', margin: '0 auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-        <h1>Buyer: {name}</h1>
+    <RoleLayout
+      roleLabel="Shop"
+      participantName={name ?? 'Participant'}
+      pulseKey={events[0]?.event_id ?? 'initial'}
+      onLogout={handleLogout}
+    >
+      <div className="legacy-role-content">
+      <div className="legacy-role-toolbar">
         <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
           <span style={{ padding: '4px 12px', borderRadius: '4px', background: '#e0e7ff', fontSize: '14px' }}>
             Cart: {cartItemCount(cart)} items — {formatPrice(cartTotal)}
@@ -131,7 +137,6 @@ export default function Buyer() {
               {showCheckout ? 'Cancel' : 'Checkout'}
             </button>
           )}
-          <button onClick={handleLogout}>Logout</button>
         </div>
       </div>
 
@@ -233,6 +238,7 @@ export default function Buyer() {
           ))
         )}
       </div>
-    </div>
+      </div>
+    </RoleLayout>
   );
 }
