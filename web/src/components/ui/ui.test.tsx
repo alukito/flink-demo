@@ -1,5 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
+import '../../styles/tokens.css';
+import '../../styles/base.css';
 import { Button } from './Button';
 import { EmptyState } from './EmptyState';
 import { FeedbackBanner } from './FeedbackBanner';
@@ -32,5 +34,19 @@ describe('shared UI primitives', () => {
   it('keeps decorative signal motion out of the accessibility tree', () => {
     const { container } = render(<SignalTrace pulseKey="order-42" />);
     expect(container.firstElementChild).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('keeps primary action Brass to a narrow accent instead of its surface', () => {
+    render(<Button>Save changes</Button>);
+    expect(screen.getByRole('button', { name: 'Save changes' })).toHaveClass('button--primary');
+
+    const primaryRule = Array.from(document.styleSheets)
+      .flatMap((sheet) => Array.from(sheet.cssRules))
+      .find((rule): rule is CSSStyleRule => rule instanceof CSSStyleRule && rule.selectorText === '.button--primary');
+
+    expect(primaryRule).toBeDefined();
+    expect(primaryRule?.style.background).toBe('var(--color-deep-ink)');
+    expect(primaryRule?.style.color).toBe('var(--color-surface)');
+    expect(primaryRule?.style.borderBottom).toBe('3px solid var(--color-brass)');
   });
 });

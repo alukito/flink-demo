@@ -68,10 +68,11 @@ button:disabled {
   transform: translateY(1px);
 }
 
-/* Brass is reserved for the primary action that advances the audience's work. */
+/* Brass is a narrow accent for the primary action, never its full surface. */
 .button--primary {
-  background: var(--color-brass);
-  color: var(--color-deep-ink);
+  border-bottom: 3px solid var(--color-brass);
+  background: var(--color-deep-ink);
+  color: var(--color-surface);
 }
 
 .button--secondary {
