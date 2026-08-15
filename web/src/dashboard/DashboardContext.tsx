@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
 import { createSession } from '../api/client';
 import { isEventEnvelope, useEvents, type DashboardMessage, type EventEnvelope, type MetricName, type WindowStat } from '../context/EventContext';
 import { useWebSocket } from '../hooks/useWebSocket';
@@ -22,6 +22,7 @@ const DashboardContext = createContext<DashboardContextValue | undefined>(undefi
 export function DashboardProvider({ children }: { children: ReactNode }) {
   const { events, addEvent, clearEvents } = useEvents();
   const [dashToken, setDashToken] = useState<string | null>(null);
+  const tokenRequest = useRef<Promise<string> | null>(null);
   const [data, dispatch] = useReducer(dashboardReducer, undefined, initialDashboardData);
   const onMessage = useCallback((message: DashboardMessage) => {
     if (isEventEnvelope(message)) addEvent(message);
@@ -31,8 +32,13 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let disposed = false;
-    const name = `dashboard-${Math.random().toString(36).slice(2, 8)}`;
-    requestFreshDashboardToken(localStorage, createSession, name)
+    let request = tokenRequest.current;
+    if (request === null) {
+      const name = `dashboard-${Math.random().toString(36).slice(2, 8)}`;
+      request = requestFreshDashboardToken(localStorage, createSession, name);
+      tokenRequest.current = request;
+    }
+    request
       .then((token) => {
         if (!disposed) setDashToken(token);
       })

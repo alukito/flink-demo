@@ -1,3 +1,4 @@
+import { StrictMode } from 'react';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test, vi } from 'vitest';
@@ -18,17 +19,19 @@ vi.mock('../hooks/useWebSocket', () => ({
 let onMessage: ((message: DashboardMessage) => void) | undefined;
 
 function Probe() {
-  const { clearAll, events, stats } = useDashboard();
+  const { clearAll, connectionState, events, stats } = useDashboard();
   return (
     <>
       <output data-testid="event-count">{events.length}</output>
       <output data-testid="stat-count">{stats.length}</output>
+      <output data-testid="connection-state">{connectionState}</output>
       <button onClick={clearAll}>reset probe</button>
     </>
   );
 }
 
 beforeEach(() => {
+  vi.clearAllMocks();
   onMessage = undefined;
   vi.mocked(createSession).mockResolvedValue({ id: 'dashboard-id', token: 'dashboard-token', name: 'dashboard', role: 'dashboard' });
   vi.mocked(useWebSocket).mockImplementation((callback) => {
@@ -68,4 +71,17 @@ test('owns one dashboard token and clears raw events with derived dashboard data
   await user.click(screen.getByRole('button', { name: 'reset probe' }));
   expect(screen.getByTestId('event-count')).toHaveTextContent('0');
   expect(screen.getByTestId('stat-count')).toHaveTextContent('0');
+});
+
+test('shares one dashboard token request across the StrictMode effect replay', async () => {
+  render(
+    <StrictMode>
+      <EventProvider>
+        <DashboardProvider><Probe /></DashboardProvider>
+      </EventProvider>
+    </StrictMode>,
+  );
+
+  await waitFor(() => expect(createSession).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect(screen.getByTestId('connection-state')).toHaveTextContent('live'));
 });
