@@ -1,0 +1,180 @@
+* {
+  box-sizing: border-box;
+}
+
+html {
+  color: var(--color-ink);
+  background: var(--color-canvas);
+  font-family: var(--font-body);
+}
+
+body {
+  min-width: 20rem;
+  min-height: 100vh;
+  margin: 0;
+  background: var(--color-canvas);
+  color: var(--color-ink);
+}
+
+button,
+input,
+select,
+textarea {
+  min-height: 44px;
+  font: inherit;
+}
+
+button,
+input,
+select,
+textarea,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+a:focus-visible,
+[tabindex]:focus-visible {
+  outline: 0;
+  box-shadow: var(--focus-ring);
+}
+
+button {
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.56;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1rem;
+  font-weight: 700;
+  line-height: 1.25;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms ease;
+}
+
+.button:not(:disabled):active {
+  transform: translateY(1px);
+}
+
+/* Brass is reserved for the primary action that advances the audience's work. */
+.button--primary {
+  background: var(--color-brass);
+  color: var(--color-deep-ink);
+}
+
+.button--secondary {
+  border-color: var(--color-steel);
+  background: var(--color-surface);
+  color: var(--color-ink);
+}
+
+.button--ghost {
+  background: transparent;
+  color: var(--color-ink);
+}
+
+.button--danger {
+  background: var(--color-error);
+  color: var(--color-surface);
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.75rem;
+  padding: 0.1875rem 0.5rem;
+  border: 1px solid currentcolor;
+  border-radius: 999px;
+  font-family: var(--font-data);
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.status-badge[data-tone='neutral'] { color: var(--color-steel); }
+.status-badge[data-tone='warning'] { color: var(--color-warning); }
+.status-badge[data-tone='info'] { color: var(--color-ink); }
+.status-badge[data-tone='success'] { color: var(--color-success); }
+.status-badge[data-tone='error'] { color: var(--color-error); }
+
+.feedback-banner {
+  border: 1px solid currentcolor;
+  border-radius: var(--radius-sm);
+  padding: 0.75rem 1rem;
+  font-weight: 600;
+}
+
+.feedback-banner[data-tone='success'] { color: var(--color-success); }
+.feedback-banner[data-tone='error'] { color: var(--color-error); }
+
+.empty-state {
+  display: grid;
+  justify-items: start;
+  gap: 0.5rem;
+  padding: 1.5rem;
+  border: 1px dashed var(--color-steel);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.empty-state__title {
+  margin: 0;
+  color: var(--color-deep-ink);
+  font-family: var(--font-display);
+  font-size: 1.125rem;
+}
+
+.empty-state__description {
+  margin: 0;
+  color: var(--color-steel);
+}
+
+.empty-state__action { margin-top: 0.5rem; }
+
+.signal-trace {
+  display: inline-flex;
+  inline-size: 3rem;
+  block-size: 2px;
+  overflow: hidden;
+  background: var(--color-steel);
+}
+
+.signal-trace__pulse {
+  inline-size: 35%;
+  block-size: 100%;
+  background: var(--color-brass);
+  animation: signal-trace-pulse 700ms ease-out;
+}
+
+@keyframes signal-trace-pulse {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(300%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+
+  .signal-trace__pulse,
+  .highlight-animation {
+    animation: none !important;
+  }
+}

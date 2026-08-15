@@ -1,0 +1,18 @@
+:root {
+  --color-ink: #10243c;
+  --color-deep-ink: #142b46;
+  --color-canvas: #edf3f7;
+  --color-surface: #ffffff;
+  --color-steel: #54708b;
+  --color-brass: #f2bd58;
+  --color-success: #16775a;
+  --color-warning: #8a5a00;
+  --color-error: #b42318;
+  --font-display: 'Sora Variable', sans-serif;
+  --font-body: 'IBM Plex Sans Variable', sans-serif;
+  --font-data: 'IBM Plex Mono', monospace;
+  --focus-ring: 0 0 0 3px rgb(46 111 206 / 35%);
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --shadow-raised: 0 12px 32px rgb(16 36 60 / 10%);
+}
