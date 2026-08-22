@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { addToCart, checkout, listBuyerOrders, listBuyerProducts } from '../api/client';
 import '../styles/base.css';
@@ -80,6 +80,19 @@ function renderBuyer() {
   return render(<MemoryRouter><Buyer /></MemoryRouter>);
 }
 
+function mockMatchMedia(matches: boolean) {
+  vi.stubGlobal('matchMedia', vi.fn((query: string): MediaQueryList => ({
+    matches,
+    media: query,
+    onchange: null,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(() => true),
+  })));
+}
+
 function stylesheetRules(): CSSStyleRule[] {
   const collect = (rules: CSSRuleList): CSSStyleRule[] => Array.from(rules).flatMap((rule) => {
     if (rule instanceof CSSStyleRule) return [rule];
@@ -91,10 +104,15 @@ function stylesheetRules(): CSSStyleRule[] {
 
 describe('Buyer', () => {
   beforeEach(() => {
+    mockMatchMedia(false);
     addToCartMock.mockReset().mockImplementation(async () => jsonResponse({ cart_id: 'cart', items: [] }));
     checkoutMock.mockReset().mockImplementation(async () => jsonResponse({ id: 'order-uuid' }));
     listBuyerProductsMock.mockReset().mockImplementation(async () => jsonResponse(products));
     listBuyerOrdersMock.mockReset().mockImplementation(async () => jsonResponse(orders));
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it('puts a two-column-capable catalog before recent orders with lifecycle badges', async () => {
@@ -130,6 +148,60 @@ describe('Buyer', () => {
     ))).toBe(true);
   });
 
+  it('marks the mobile Buyer background inert and removes inert on ordinary close', async () => {
+    const user = userEvent.setup();
+    const { container } = renderBuyer();
+    const addCoffee = await screen.findByRole('button', { name: /Add Flores coffee to cart/i });
+
+    await user.click(addCoffee);
+    await waitFor(() => expect(addToCartMock).toHaveBeenCalledTimes(1));
+    const reviewCart = screen.getByRole('button', { name: /Review cart.*1 item/i });
+    await user.click(reviewCart);
+
+    const buyerContent = container.querySelector('.buyer-content');
+    const roleHeader = container.querySelector('.role-header');
+    expect(buyerContent).toHaveAttribute('inert');
+    expect(reviewCart).toHaveAttribute('inert');
+    expect(roleHeader).toHaveAttribute('inert');
+
+    await user.click(screen.getByRole('button', { name: 'Close cart' }));
+    expect(buyerContent).not.toHaveAttribute('inert');
+    expect(reviewCart).not.toHaveAttribute('inert');
+    expect(roleHeader).not.toHaveAttribute('inert');
+    expect(reviewCart).toHaveFocus();
+  });
+
+  it('keeps programmatic focus inside the mobile sheet', async () => {
+    const user = userEvent.setup();
+    renderBuyer();
+    const addCoffee = await screen.findByRole('button', { name: /Add Flores coffee to cart/i });
+
+    await user.click(addCoffee);
+    await waitFor(() => expect(addToCartMock).toHaveBeenCalledTimes(1));
+    await user.click(screen.getByRole('button', { name: /Review cart.*1 item/i }));
+    const closeCart = screen.getByRole('button', { name: 'Close cart' });
+    expect(closeCart).toHaveFocus();
+
+    addCoffee.focus();
+    expect(closeCart).toHaveFocus();
+  });
+
+  it('keeps the desktop checkout panel and Buyer workspace simultaneously interactive', async () => {
+    mockMatchMedia(true);
+    const user = userEvent.setup();
+    const { container } = renderBuyer();
+    const addCoffee = await screen.findByRole('button', { name: /Add Flores coffee to cart/i });
+
+    await user.click(addCoffee);
+    await waitFor(() => expect(addToCartMock).toHaveBeenCalledTimes(1));
+    await user.click(screen.getByRole('button', { name: /Review cart.*1 item/i }));
+    expect(await screen.findByRole('dialog', { name: 'Review your cart' })).not.toHaveAttribute('aria-modal');
+    expect(container.querySelector('.buyer-content')).not.toHaveAttribute('inert');
+
+    addCoffee.focus();
+    expect(addCoffee).toHaveFocus();
+  });
+
   it('adds quantities to one cart and reports the total item count in the sticky review action', async () => {
     const user = userEvent.setup();
     renderBuyer();
@@ -150,7 +222,7 @@ describe('Buyer', () => {
     expect(screen.getByRole('button', { name: /Review cart.*2 items.*Rp 24.000/i })).toHaveClass('buyer-cart-summary');
   });
 
-  it('places the quantity-aware payload, resets checkout state, and reloads recent orders', async () => {
+  it('places the quantity-aware payload, resets checkout state, focuses recent orders, and reloads them', async () => {
     const user = userEvent.setup();
     renderBuyer();
     const addCoffee = await screen.findByRole('button', { name: /Add Flores coffee to cart/i });
@@ -170,7 +242,10 @@ describe('Buyer', () => {
     ));
     expect(await screen.findByRole('status')).toHaveTextContent('Order placed');
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Review cart.*0 items.*Rp 0/i })).toBeDisabled();
+    const emptyCartReview = screen.getByRole('button', { name: /Review cart.*0 items.*Rp 0/i });
+    expect(emptyCartReview).toBeDisabled();
+    expect(screen.getByRole('heading', { name: 'Recent orders' }).closest('section')).toHaveFocus();
+    expect(emptyCartReview).not.toHaveFocus();
     await waitFor(() => expect(listBuyerOrdersMock).toHaveBeenCalledTimes(2));
 
     await user.click(addCoffee);

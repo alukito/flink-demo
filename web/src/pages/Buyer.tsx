@@ -89,6 +89,12 @@ export default function Buyer() {
   const [cartAddingId, setCartAddingId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<ActionFeedback | null>(null);
   const cartTriggerRef = useRef<HTMLButtonElement>(null);
+  const recentOrdersRef = useRef<HTMLElement>(null);
+  const focusOrdersAfterCheckoutRef = useRef(false);
+  const shouldRestoreCartFocus = useCallback(
+    () => !focusOrdersAfterCheckoutRef.current,
+    [],
+  );
 
   const loadProducts = useCallback(async () => {
     if (!token) return;
@@ -123,6 +129,12 @@ export default function Buyer() {
     }, 4_000);
     return () => window.clearTimeout(timeout);
   }, [feedback]);
+
+  useEffect(() => {
+    if (showCheckout || !focusOrdersAfterCheckoutRef.current) return;
+    focusOrdersAfterCheckoutRef.current = false;
+    recentOrdersRef.current?.focus();
+  }, [showCheckout]);
 
   const cartTotal = cart.reduce(
     (sum, item) => sum + item.product.price * item.quantity,
@@ -170,6 +182,7 @@ export default function Buyer() {
       setCart([]);
       setCartId(crypto.randomUUID());
       setShippingAddress('');
+      focusOrdersAfterCheckoutRef.current = true;
       setShowCheckout(false);
       setFeedback(createFeedback('success', 'Order placed'));
       await loadOrders();
@@ -250,7 +263,12 @@ export default function Buyer() {
               )}
             </section>
 
-            <section className="buyer-section buyer-orders" aria-labelledby="buyer-orders-heading">
+            <section
+              ref={recentOrdersRef}
+              className="buyer-section buyer-orders"
+              aria-labelledby="buyer-orders-heading"
+              tabIndex={-1}
+            >
               <header className="buyer-section__header">
                 <div>
                   <span className="buyer-section__eyebrow">Lifecycle</span>
@@ -302,6 +320,7 @@ export default function Buyer() {
             address={shippingAddress}
             submitting={checkingOut}
             returnFocusRef={cartTriggerRef}
+            shouldRestoreFocus={shouldRestoreCartFocus}
             onAddressChange={setShippingAddress}
             onClose={() => setShowCheckout(false)}
             onPlaceOrder={handleCheckout}

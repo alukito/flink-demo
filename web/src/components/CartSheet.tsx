@@ -1,4 +1,12 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type RefObject,
+} from 'react';
 import { FOCUSABLE_SELECTOR, nextFocusIndex } from '../lib/focusTrap';
 import { Button } from './ui/Button';
 
@@ -18,6 +26,7 @@ export interface CartSheetProps {
   address: string;
   submitting: boolean;
   returnFocusRef: RefObject<HTMLButtonElement | null>;
+  shouldRestoreFocus?: () => boolean;
   onAddressChange: (value: string) => void;
   onClose: () => void;
   onPlaceOrder: () => void;
@@ -32,6 +41,32 @@ function desktopPanelMatches(): boolean {
     && window.matchMedia('(min-width: 60rem)').matches;
 }
 
+function alwaysRestoreFocus(): boolean {
+  return true;
+}
+
+function isolateModalBackground(layer: HTMLElement): () => void {
+  const changedElements: HTMLElement[] = [];
+  let foreground: HTMLElement | null = layer;
+
+  while (foreground?.parentElement) {
+    const parent: HTMLElement = foreground.parentElement;
+    Array.from(parent.children).forEach((sibling) => {
+      if (sibling === foreground || !(sibling instanceof HTMLElement) || sibling.hasAttribute('inert')) return;
+      sibling.setAttribute('inert', '');
+      changedElements.push(sibling);
+    });
+    foreground = parent;
+    if (foreground === document.body) break;
+  }
+
+  return () => {
+    changedElements.forEach((element) => {
+      element.removeAttribute('inert');
+    });
+  };
+}
+
 export function CartSheet({
   open,
   items,
@@ -39,6 +74,7 @@ export function CartSheet({
   address,
   submitting,
   returnFocusRef,
+  shouldRestoreFocus = alwaysRestoreFocus,
   onAddressChange,
   onClose,
   onPlaceOrder,
@@ -61,8 +97,29 @@ export function CartSheet({
     if (!open) return undefined;
     const returnFocusElement = returnFocusRef.current;
     closeRef.current?.focus();
-    return () => returnFocusElement?.focus();
-  }, [open, returnFocusRef]);
+    return () => {
+      if (shouldRestoreFocus()) returnFocusElement?.focus();
+    };
+  }, [open, returnFocusRef, shouldRestoreFocus]);
+
+  useLayoutEffect(() => {
+    if (!open || isDesktopPanel) return undefined;
+    const layer = sheetRef.current?.parentElement;
+    if (!layer) return undefined;
+
+    const restoreBackground = isolateModalBackground(layer);
+    const keepFocusInside = (event: FocusEvent) => {
+      if (event.target instanceof Node && !layer.contains(event.target)) {
+        closeRef.current?.focus();
+      }
+    };
+    document.addEventListener('focusin', keepFocusInside);
+
+    return () => {
+      document.removeEventListener('focusin', keepFocusInside);
+      restoreBackground();
+    };
+  }, [isDesktopPanel, open]);
 
   if (!open) return null;
 
