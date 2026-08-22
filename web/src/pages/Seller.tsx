@@ -58,6 +58,8 @@ export default function Seller() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [newProduct, setNewProduct] = useState({ name: '', price: '', quantity: '' });
   const [feedback, setFeedback] = useState<ActionFeedback | null>(null);
+  const [productRefreshError, setProductRefreshError] = useState<string | null>(null);
+  const [orderRefreshError, setOrderRefreshError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
@@ -68,24 +70,40 @@ export default function Seller() {
     if (!token) return;
     try {
       const resp = await listSellerProducts(token);
-      if (resp.ok) setProducts(await resp.json());
+      if (!resp.ok) {
+        setProductRefreshError('Products could not be refreshed. Existing products are still shown.');
+        return;
+      }
+      setProducts(await resp.json());
+      setProductRefreshError(null);
     } catch {
-      setFeedback(createFeedback('error', 'Products could not be refreshed. Existing products are still shown.'));
+      setProductRefreshError('Products could not be refreshed. Existing products are still shown.');
     }
   }, [token]);
 
   const loadOrders = useCallback(async () => {
     const generation = ++latestOrdersGeneration.current;
     if (!token) return;
+    let responseWasOK = false;
     try {
       await loadLatestSellerOrders({
         generation,
         getLatestGeneration: () => latestOrdersGeneration.current,
-        listOrders: () => listSellerOrders(token),
+        listOrders: async () => {
+          const response = await listSellerOrders(token);
+          responseWasOK = response.ok;
+          return response;
+        },
         commit: setOrders,
       });
+      if (generation !== latestOrdersGeneration.current) return;
+      setOrderRefreshError(responseWasOK
+        ? null
+        : 'Orders could not be refreshed. Existing orders are still shown.');
     } catch {
-      setFeedback(createFeedback('error', 'Orders could not be refreshed. Existing orders are still shown.'));
+      if (generation === latestOrdersGeneration.current) {
+        setOrderRefreshError('Orders could not be refreshed. Existing orders are still shown.');
+      }
     }
   }, [token]);
 
@@ -209,6 +227,8 @@ export default function Seller() {
     >
       <div className="seller-view">
         {feedback ? <FeedbackBanner tone={feedback.tone}>{feedback.message}</FeedbackBanner> : null}
+        {productRefreshError ? <FeedbackBanner tone="error">{productRefreshError}</FeedbackBanner> : null}
+        {orderRefreshError ? <FeedbackBanner tone="error">{orderRefreshError}</FeedbackBanner> : null}
 
         <div className="seller-workbench">
           <ActionCard

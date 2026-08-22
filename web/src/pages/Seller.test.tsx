@@ -24,8 +24,18 @@ vi.mock('../context/SessionContext', () => ({
   }),
 }));
 
+let sellerEvents: Array<{
+  event_id: string;
+  event_type: string;
+  actor_id: string;
+  actor_name: string;
+  actor_role: string;
+  timestamp: string;
+  payload: Record<string, unknown>;
+}> = [];
+
 vi.mock('../context/EventContext', () => ({
-  useEvents: () => ({ events: [], addEvent: vi.fn(), clearEvents: vi.fn() }),
+  useEvents: () => ({ events: sellerEvents, addEvent: vi.fn(), clearEvents: vi.fn() }),
 }));
 
 vi.mock('../hooks/useWebSocket', () => ({ useWebSocket: vi.fn() }));
@@ -98,6 +108,26 @@ function jsonResponse(data: unknown): Response {
   });
 }
 
+function errorResponse(message: string): Response {
+  return new Response(message, {
+    status: 503,
+    statusText: 'Service Unavailable',
+    headers: { 'Content-Type': 'text/plain' },
+  });
+}
+
+function sellerOrderEvent(eventId: string) {
+  return {
+    event_id: eventId,
+    event_type: 'order.confirmed',
+    actor_id: 'buyer-uuid',
+    actor_name: 'Ayu',
+    actor_role: 'buyer',
+    timestamp: '2026-08-15T07:00:00Z',
+    payload: { seller_id: 'seller-uuid', buyer_id: 'buyer-uuid', order_id: 'checkout-order' },
+  };
+}
+
 function deferredResponse() {
   let resolve!: (response: Response) => void;
   let reject!: (reason: Error) => void;
@@ -128,6 +158,7 @@ function stylesheetRules(): CSSStyleRule[] {
 
 describe('Seller', () => {
   beforeEach(() => {
+    sellerEvents = [];
     addProductMock.mockReset().mockImplementation(async () => jsonResponse({ id: 'new-product' }));
     confirmOrderMock.mockReset().mockImplementation(async () => jsonResponse({ id: 'checkout-order', status: 'confirmed' }));
     listSellerOrdersMock.mockReset().mockImplementation(async () => jsonResponse(orders));
@@ -223,6 +254,75 @@ describe('Seller', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Order could not be confirmed. Try again.');
     expect(screen.getByRole('heading', { name: 'Flores coffee' })).toBeVisible();
     expect(screen.getByText('Ayu')).toBeVisible();
+  });
+
+  it('keeps products visible and reports a resolved non-OK product refresh', async () => {
+    listSellerProductsMock
+      .mockReset()
+      .mockImplementationOnce(async () => jsonResponse(products))
+      .mockImplementationOnce(async () => errorResponse('inventory unavailable'));
+    const user = userEvent.setup();
+    renderSeller();
+
+    await screen.findByRole('heading', { name: 'Flores coffee' });
+    await user.type(screen.getByRole('textbox', { name: 'Product name' }), 'Flores cocoa');
+    await user.type(screen.getByRole('spinbutton', { name: 'Price in rupiah' }), '18000');
+    await user.click(screen.getByRole('button', { name: 'Add product' }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent('Product added');
+    await waitFor(() => expect(listSellerProductsMock).toHaveBeenCalledTimes(2));
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Products could not be refreshed. Existing products are still shown.',
+    );
+    expect(screen.getByRole('heading', { name: 'Flores coffee' })).toBeVisible();
+  });
+
+  it('keeps orders visible and reports a resolved non-OK order refresh', async () => {
+    listSellerOrdersMock
+      .mockReset()
+      .mockImplementationOnce(async () => jsonResponse(orders))
+      .mockImplementationOnce(async () => errorResponse('orders unavailable'));
+    const view = renderSeller();
+
+    await screen.findByText('Ayu');
+    sellerEvents = [sellerOrderEvent('refresh-orders')];
+    view.rerender(<MemoryRouter><Seller /></MemoryRouter>);
+
+    await waitFor(() => expect(listSellerOrdersMock).toHaveBeenCalledTimes(2));
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Orders could not be refreshed. Existing orders are still shown.',
+    );
+    expect(screen.getByText('Ayu')).toBeVisible();
+  });
+
+  it('ignores a stale order rejection after a newer refresh succeeds', async () => {
+    const olderRefresh = deferredResponse();
+    const newestOrders = [{
+      ...orders[1],
+      id: 'newest-confirmed-order',
+      buyer_id: 'newest-buyer',
+      buyer_name: 'Fajar',
+      created_at: '2026-08-15T08:00:00Z',
+    }];
+    listSellerOrdersMock
+      .mockReset()
+      .mockImplementationOnce(async () => jsonResponse(orders))
+      .mockReturnValueOnce(olderRefresh.promise)
+      .mockImplementationOnce(async () => jsonResponse(newestOrders));
+    const view = renderSeller();
+
+    await screen.findByText('Ayu');
+    sellerEvents = [sellerOrderEvent('older-refresh')];
+    view.rerender(<MemoryRouter><Seller /></MemoryRouter>);
+    await waitFor(() => expect(listSellerOrdersMock).toHaveBeenCalledTimes(2));
+
+    sellerEvents = [sellerOrderEvent('newer-refresh')];
+    view.rerender(<MemoryRouter><Seller /></MemoryRouter>);
+    expect(await screen.findByText('Fajar')).toBeVisible();
+
+    await act(async () => olderRefresh.reject(new Error('late network failure')));
+    expect(screen.getByText('Fajar')).toBeVisible();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('uses phone-safe controls and switches to a desktop workbench at 960px', () => {
