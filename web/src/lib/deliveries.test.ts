@@ -15,6 +15,34 @@ test('describes missing or invalid readiness without claiming zero seconds', () 
   });
 });
 
+test('rejects an impossible RFC3339 calendar date instead of normalizing it to ready', () => {
+  const now = new Date('2026-08-09T00:00:00.000Z');
+
+  assert.deepEqual(deliveryReadiness('2025-02-30T00:00:00Z', now), {
+    kind: 'unavailable',
+    label: 'Readiness unavailable',
+  });
+});
+
+test('accepts Go RFC3339Nano readiness with fractional seconds and numeric offsets', () => {
+  const now = new Date('2026-08-09T00:00:00.000Z');
+
+  assert.deepEqual(deliveryReadiness('2026-08-09T00:00:05.123456789Z', now), {
+    kind: 'waiting',
+    seconds: 6,
+    label: 'Ready in 6s',
+  });
+  assert.deepEqual(deliveryReadiness('2026-08-09T07:00:05.8+07:00', now), {
+    kind: 'waiting',
+    seconds: 6,
+    label: 'Ready in 6s',
+  });
+  assert.deepEqual(deliveryReadiness('2026-08-09T07:00:00+07:00', now), {
+    kind: 'ready',
+    label: 'Ready to deliver',
+  });
+});
+
 test('describes future and elapsed readiness with explicit textual states', () => {
   const now = new Date('2026-08-09T00:00:00.000Z');
 
