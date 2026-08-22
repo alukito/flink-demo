@@ -1,20 +1,29 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import {
+  deliverJob,
+  listShipperDeliveries,
+  listShipperJobs,
+  pickJob,
+} from '../api/client';
+import { ActionCard } from '../components/ActionCard';
+import { RoleLayout } from '../components/RoleLayout';
+import { Button } from '../components/ui/Button';
+import { EmptyState } from '../components/ui/EmptyState';
+import { FeedbackBanner } from '../components/ui/FeedbackBanner';
+import { StatusBadge } from '../components/ui/StatusBadge';
+import { useEvents } from '../context/EventContext';
 import { useSession } from '../context/SessionContext';
 import { useWebSocket } from '../hooks/useWebSocket';
-import { useEvents } from '../context/EventContext';
-import {
-  listShipperJobs, listShipperDeliveries, pickJob, deliverJob,
-} from '../api/client';
 import {
   copyDeliveries,
-  secondsUntilReady,
+  deliveryReadiness,
   type Delivery,
   type ShipperDeliveries,
 } from '../lib/deliveries';
+import { createFeedback, type ActionFeedback } from '../lib/feedback';
 import { isShipperQueueEvent } from '../lib/orderEvents';
 import { loadLatestShipperSnapshot } from '../lib/shipperRefresh';
-import { RoleLayout } from '../components/RoleLayout';
 
 interface ShipperState {
   jobs: Delivery[];
@@ -26,6 +35,43 @@ const emptyShipperState: ShipperState = {
   deliveries: { active: [], history: [] },
 };
 
+function participantName(delivery: Delivery): string {
+  return delivery.buyer_name ?? delivery.buyer_id;
+}
+
+function formatTimestamp(value: string | undefined): string {
+  const milliseconds = Date.parse(value ?? '');
+  return Number.isFinite(milliseconds) ? new Date(milliseconds).toLocaleString() : 'Unavailable';
+}
+
+function formatElapsed(pickedAt: string | undefined, deliveredAt: string | undefined): string {
+  const pickedMilliseconds = Date.parse(pickedAt ?? '');
+  const deliveredMilliseconds = Date.parse(deliveredAt ?? '');
+  if (!Number.isFinite(pickedMilliseconds) || !Number.isFinite(deliveredMilliseconds)) {
+    return 'Unavailable';
+  }
+
+  const elapsedSeconds = Math.max(0, Math.ceil((deliveredMilliseconds - pickedMilliseconds) / 1000));
+  const hours = Math.floor(elapsedSeconds / 3600);
+  const minutes = Math.floor((elapsedSeconds % 3600) / 60);
+  const seconds = elapsedSeconds % 60;
+  return [
+    hours > 0 ? `${hours}h` : '',
+    minutes > 0 ? `${minutes}m` : '',
+    `${seconds}s`,
+  ].filter(Boolean).join(' ');
+}
+
+function DeliveryItems({ delivery }: { delivery: Delivery }) {
+  return (
+    <ul className="shipper-items" aria-label="Products">
+      {delivery.items.map((item, index) => (
+        <li key={`${item.product_id}-${index}`}>{item.quantity} × {item.product_name}</li>
+      ))}
+    </ul>
+  );
+}
+
 export default function Shipper() {
   const { id, name, token, clearSession } = useSession();
   const navigate = useNavigate();
@@ -34,7 +80,8 @@ export default function Shipper() {
 
   const [shipperState, setShipperState] = useState<ShipperState>(emptyShipperState);
   const [now, setNow] = useState(() => new Date());
-  const [error, setError] = useState('');
+  const [feedback, setFeedback] = useState<ActionFeedback | null>(null);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
   const [pickingId, setPickingId] = useState<string | null>(null);
   const [deliveringId, setDeliveringId] = useState<string | null>(null);
   const latestRefreshGeneration = useRef(0);
@@ -49,21 +96,24 @@ export default function Shipper() {
       getLatestGeneration: () => latestRefreshGeneration.current,
       listJobs: () => listShipperJobs(token),
       listDeliveries: () => listShipperDeliveries(token),
-      commit: ({ jobs, deliveries }) => setShipperState({
-        jobs,
-        deliveries: copyDeliveries(deliveries),
-      }),
-      reportError: setError,
+      commit: ({ jobs: nextJobs, deliveries: nextDeliveries }) => {
+        setShipperState({
+          jobs: nextJobs,
+          deliveries: copyDeliveries(nextDeliveries),
+        });
+        setRefreshError(null);
+      },
+      reportError: setRefreshError,
     });
   }, [token]);
 
   useEffect(() => {
-    loadShipperState();
+    void loadShipperState();
   }, [loadShipperState]);
 
   useEffect(() => {
     const pageTimer = window.setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(pageTimer);
+    return () => window.clearInterval(pageTimer);
   }, []);
 
   useEffect(() => {
@@ -71,37 +121,54 @@ export default function Shipper() {
     if (!newestEvent) return;
 
     if (isShipperQueueEvent(newestEvent)) {
-      loadShipperState();
+      void loadShipperState();
       return;
     }
 
     if (newestEvent.event_type === 'shipment.delivered' && newestEvent.payload.shipper_id === id) {
-      loadShipperState();
+      void loadShipperState();
     }
   }, [events, id, loadShipperState]);
 
   const handlePickJob = async (orderId: string) => {
     if (!token || pickingId) return;
-    setError('');
+    setFeedback(null);
     setPickingId(orderId);
     try {
-      const resp = await pickJob(token, orderId);
-      if (!resp.ok) {
-        setError(resp.status === 409 ? 'Job already picked by another shipper' : await resp.text());
+      const response = await pickJob(token, orderId);
+      if (!response.ok) {
+        const message = (await response.text()).trim();
+        setFeedback(createFeedback(
+          'error',
+          response.status === 409
+            ? 'Job already picked by another shipper'
+            : message || 'Job could not be picked up. Try again.',
+        ));
+        return;
       }
+      setFeedback(createFeedback('success', 'Job picked up'));
+    } catch {
+      setFeedback(createFeedback('error', 'Job could not be picked up. Try again.'));
     } finally {
       setPickingId(null);
       await loadShipperState();
     }
   };
 
-  const handleDeliver = async (orderId: string) => {
-    if (!token || deliveringId) return;
-    setError('');
-    setDeliveringId(orderId);
+  const handleDeliver = async (delivery: Delivery) => {
+    if (!token || deliveringId || deliveryReadiness(delivery.ready_at, new Date()).kind !== 'ready') return;
+    setFeedback(null);
+    setDeliveringId(delivery.id);
     try {
-      const resp = await deliverJob(token, orderId);
-      if (!resp.ok) setError(await resp.text());
+      const response = await deliverJob(token, delivery.id);
+      if (!response.ok) {
+        const message = (await response.text()).trim();
+        setFeedback(createFeedback('error', message || 'Delivery could not be completed. Try again.'));
+        return;
+      }
+      setFeedback(createFeedback('success', 'Delivery completed'));
+    } catch {
+      setFeedback(createFeedback('error', 'Delivery could not be completed. Try again.'));
     } finally {
       setDeliveringId(null);
       await loadShipperState();
@@ -113,8 +180,9 @@ export default function Shipper() {
     navigate('/');
   };
 
-  const history = [...deliveries.history].sort((first, second) =>
-    (Date.parse(second.delivered_at ?? '') || 0) - (Date.parse(first.delivered_at ?? '') || 0));
+  const history = [...deliveries.history].sort((first, second) => (
+    (Date.parse(second.delivered_at ?? '') || 0) - (Date.parse(first.delivered_at ?? '') || 0)
+  ));
 
   return (
     <RoleLayout
@@ -123,118 +191,128 @@ export default function Shipper() {
       pulseKey={events[0]?.event_id ?? 'initial'}
       onLogout={handleLogout}
     >
-      <div className="legacy-role-content">
+      <div className="shipper-view">
+        {feedback ? <FeedbackBanner tone={feedback.tone}>{feedback.message}</FeedbackBanner> : null}
+        {refreshError ? <FeedbackBanner tone="error">{refreshError}</FeedbackBanner> : null}
 
-      {error && <p style={{ color: 'red', marginBottom: '16px' }}>{error}</p>}
-
-      <section style={{ background: 'white', borderRadius: '8px', padding: '20px', marginBottom: '20px', border: '1px solid #e5e7eb' }}>
-        <h2>Available Jobs</h2>
-        <div style={{ marginTop: '12px' }}>
-          {jobs.length === 0 ? (
-            <p style={{ color: '#9ca3af' }}>No jobs available. Waiting for sellers to confirm orders...</p>
-          ) : jobs.map((job) => (
-            <article key={job.id} style={{
-              padding: '16px', borderRadius: '6px', border: '1px solid #d1d5db',
-              marginBottom: '12px', background: '#f9fafb',
-            }}>
-              <div style={{ fontWeight: 'bold' }}>Delivery to {job.buyer_name ?? job.buyer_id}</div>
-              <div style={{ marginTop: '8px', fontSize: '14px', color: '#6b7280' }}>
-                {job.items.map((item) => <div key={item.product_id}>{item.quantity}x {item.product_name}</div>)}
+        <div className="shipper-workbench">
+          <ActionCard
+            className="shipper-panel shipper-active"
+            title="Active delivery"
+            description={`${deliveries.active.length} ${deliveries.active.length === 1 ? 'run' : 'runs'} in progress.`}
+          >
+            {deliveries.active.length === 0 ? (
+              <EmptyState
+                title="No active delivery"
+                description="Pick up an available job to begin a run."
+              />
+            ) : (
+              <div className="shipper-card-list">
+                {deliveries.active.map((delivery) => {
+                  const readiness = deliveryReadiness(delivery.ready_at, now);
+                  return (
+                    <article className="shipper-card shipper-active-card" key={delivery.id}>
+                      <header className="shipper-card__header">
+                        <div>
+                          <span className="shipper-card__label">Deliver to</span>
+                          <h3>{participantName(delivery)}</h3>
+                        </div>
+                        <StatusBadge tone="info">In transit</StatusBadge>
+                      </header>
+                      <DeliveryItems delivery={delivery} />
+                      <dl className="shipper-meta">
+                        <div><dt>Destination</dt><dd>{delivery.shipping_address}</dd></div>
+                        <div><dt>Seller</dt><dd>{delivery.seller_name ?? delivery.seller_id}</dd></div>
+                        <div><dt>Picked</dt><dd>{formatTimestamp(delivery.picked_at)}</dd></div>
+                      </dl>
+                      <p className="shipper-readiness" data-kind={readiness.kind}>{readiness.label}</p>
+                      <Button
+                        type="button"
+                        loading={deliveringId === delivery.id}
+                        loadingLabel="Delivering…"
+                        disabled={readiness.kind !== 'ready' || deliveringId !== null}
+                        onClick={() => void handleDeliver(delivery)}
+                      >
+                        Mark delivered
+                      </Button>
+                    </article>
+                  );
+                })}
               </div>
-              <div style={{ marginTop: '8px', color: '#6b7280', fontSize: '12px' }}>
-                Seller: {job.seller_name ?? job.seller_id} · Destination: {job.shipping_address}
+            )}
+          </ActionCard>
+
+          <ActionCard
+            className="shipper-panel shipper-jobs"
+            title="Available jobs"
+            description="Confirmed orders ready for a shipper."
+          >
+            {jobs.length === 0 ? (
+              <EmptyState title="No jobs available" description="New confirmed orders will appear here." />
+            ) : (
+              <div className="shipper-card-list">
+                {jobs.map((job) => (
+                  <article className="shipper-card shipper-job-card" key={job.id}>
+                    <header className="shipper-card__header">
+                      <div>
+                        <span className="shipper-card__label">Deliver to</span>
+                        <h3>{participantName(job)}</h3>
+                      </div>
+                      <StatusBadge tone="neutral">Available</StatusBadge>
+                    </header>
+                    <DeliveryItems delivery={job} />
+                    <dl className="shipper-meta">
+                      <div><dt>Destination</dt><dd>{job.shipping_address}</dd></div>
+                      <div><dt>Seller</dt><dd>{job.seller_name ?? job.seller_id}</dd></div>
+                      <div><dt>Created</dt><dd>{formatTimestamp(job.created_at)}</dd></div>
+                    </dl>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      loading={pickingId === job.id}
+                      loadingLabel="Picking up…"
+                      disabled={pickingId !== null}
+                      onClick={() => void handlePickJob(job.id)}
+                    >
+                      Pick up job
+                    </Button>
+                  </article>
+                ))}
               </div>
-              <div style={{ marginTop: '4px', color: '#6b7280', fontSize: '12px' }}>
-                Created: {new Date(job.created_at).toLocaleString()}
+            )}
+          </ActionCard>
+
+          <ActionCard
+            className="shipper-panel shipper-history"
+            title="Completed deliveries"
+            description="Delivered runs, newest first."
+          >
+            {history.length === 0 ? (
+              <EmptyState title="No completed deliveries" description="Finished runs will be recorded here." />
+            ) : (
+              <div className="shipper-history-list">
+                {history.map((delivery) => (
+                  <article className="shipper-card shipper-history-card" key={delivery.id}>
+                    <header className="shipper-card__header">
+                      <div>
+                        <span className="shipper-card__label">Delivered to</span>
+                        <h3>{participantName(delivery)}</h3>
+                      </div>
+                      <StatusBadge tone="success">Delivered</StatusBadge>
+                    </header>
+                    <DeliveryItems delivery={delivery} />
+                    <dl className="shipper-meta shipper-history-meta">
+                      <div><dt>Destination</dt><dd>{delivery.shipping_address}</dd></div>
+                      <div><dt>Picked</dt><dd>{formatTimestamp(delivery.picked_at)}</dd></div>
+                      <div><dt>Delivered</dt><dd>{formatTimestamp(delivery.delivered_at)}</dd></div>
+                      <div><dt>Elapsed</dt><dd>{formatElapsed(delivery.picked_at, delivery.delivered_at)}</dd></div>
+                    </dl>
+                  </article>
+                ))}
               </div>
-              <button
-                onClick={() => handlePickJob(job.id)}
-                disabled={pickingId === job.id}
-                style={{ marginTop: '12px', padding: '6px 20px' }}
-              >
-                {pickingId === job.id ? 'Picking...' : 'Pick Up Job'}
-              </button>
-            </article>
-          ))}
+            )}
+          </ActionCard>
         </div>
-      </section>
-
-      <section style={{ background: 'white', borderRadius: '8px', padding: '20px', marginBottom: '20px', border: '1px solid #fbbf24' }}>
-        <h2>My Active Deliveries</h2>
-        <div style={{ marginTop: '12px' }}>
-          {deliveries.active.length === 0 ? (
-            <p style={{ color: '#9ca3af' }}>No active deliveries.</p>
-          ) : deliveries.active.map((delivery) => {
-            const remainingSeconds = secondsUntilReady(delivery.ready_at, now);
-            const readyAt = Date.parse(delivery.ready_at ?? '');
-            const isReady = Number.isFinite(readyAt) && remainingSeconds === 0;
-
-            return (
-              <article key={delivery.id} style={{
-                padding: '16px', borderRadius: '6px', border: '1px solid #d1d5db',
-                marginBottom: '12px', background: isReady ? '#ecfdf5' : '#fffbeb',
-              }}>
-                <div style={{ fontWeight: 'bold' }}>Delivery to {delivery.buyer_name ?? delivery.buyer_id}</div>
-                <div style={{ marginTop: '8px', fontSize: '14px', color: '#6b7280' }}>
-                  {delivery.items.map((item) => <div key={item.product_id}>{item.quantity}x {item.product_name}</div>)}
-                </div>
-                <div style={{ marginTop: '8px', color: '#6b7280', fontSize: '12px' }}>
-                  Seller: {delivery.seller_name ?? delivery.seller_id} · Destination: {delivery.shipping_address}
-                </div>
-                <div style={{ marginTop: '4px', color: '#6b7280', fontSize: '12px' }}>
-                  Picked: {delivery.picked_at ? new Date(delivery.picked_at).toLocaleString() : 'unknown'} · Ready: {delivery.ready_at ? new Date(delivery.ready_at).toLocaleString() : 'unknown'}
-                </div>
-                <div style={{ color: isReady ? '#059669' : '#d97706', marginTop: '8px' }}>
-                  {isReady ? 'Ready to deliver' : `Ready in ${remainingSeconds}s`}
-                </div>
-                <button
-                  onClick={() => handleDeliver(delivery.id)}
-                  disabled={!isReady || deliveringId === delivery.id}
-                  style={{ marginTop: '12px', padding: '6px 20px', background: isReady ? '#059669' : undefined }}
-                >
-                  {deliveringId === delivery.id ? 'Delivering...' : isReady ? 'Mark Delivered' : `Mark Delivered (wait ${remainingSeconds}s)`}
-                </button>
-              </article>
-            );
-          })}
-        </div>
-      </section>
-
-      <section style={{ background: 'white', borderRadius: '8px', padding: '20px', border: '1px solid #059669' }}>
-        <h2>My Delivery History</h2>
-        <div style={{ marginTop: '12px' }}>
-          {history.length === 0 ? (
-            <p style={{ color: '#9ca3af' }}>No delivered jobs yet.</p>
-          ) : history.map((delivery) => {
-            const pickedAt = Date.parse(delivery.picked_at ?? '');
-            const deliveredAt = Date.parse(delivery.delivered_at ?? '');
-            const elapsedSeconds = Number.isFinite(pickedAt) && Number.isFinite(deliveredAt)
-              ? Math.max(0, Math.ceil((deliveredAt - pickedAt) / 1000))
-              : null;
-
-            return (
-              <article key={delivery.id} style={{
-                padding: '16px', borderRadius: '6px', border: '1px solid #d1d5db',
-                marginBottom: '12px', background: '#f0fdf4',
-              }}>
-                <div style={{ fontWeight: 'bold' }}>Delivered to {delivery.buyer_name ?? delivery.buyer_id}</div>
-                <div style={{ marginTop: '8px', fontSize: '14px', color: '#6b7280' }}>
-                  {delivery.items.map((item) => <div key={item.product_id}>{item.quantity}x {item.product_name}</div>)}
-                </div>
-                <div style={{ marginTop: '8px', color: '#6b7280', fontSize: '12px' }}>
-                  Seller: {delivery.seller_name ?? delivery.seller_id} · Destination: {delivery.shipping_address}
-                </div>
-                <div style={{ marginTop: '4px', color: '#6b7280', fontSize: '12px' }}>
-                  Picked: {delivery.picked_at ? new Date(delivery.picked_at).toLocaleString() : 'unknown'} · Delivered: {delivery.delivered_at ? new Date(delivery.delivered_at).toLocaleString() : 'unknown'}
-                </div>
-                <div style={{ color: '#059669', marginTop: '8px' }}>
-                  Elapsed: {elapsedSeconds === null ? 'unknown' : `${elapsedSeconds}s`}
-                </div>
-              </article>
-            );
-          })}
-        </div>
-      </section>
       </div>
     </RoleLayout>
   );

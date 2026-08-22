@@ -1,6 +1,33 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { copyDeliveries, secondsUntilReady } from './deliveries.ts';
+import { copyDeliveries, deliveryReadiness, secondsUntilReady } from './deliveries.ts';
+
+test('describes missing or invalid readiness without claiming zero seconds', () => {
+  const now = new Date('2026-08-09T00:00:00.000Z');
+
+  assert.deepEqual(deliveryReadiness(undefined, now), {
+    kind: 'unavailable',
+    label: 'Readiness unavailable',
+  });
+  assert.deepEqual(deliveryReadiness('invalid', now), {
+    kind: 'unavailable',
+    label: 'Readiness unavailable',
+  });
+});
+
+test('describes future and elapsed readiness with explicit textual states', () => {
+  const now = new Date('2026-08-09T00:00:00.000Z');
+
+  assert.deepEqual(deliveryReadiness('2026-08-09T00:00:05.800Z', now), {
+    kind: 'waiting',
+    seconds: 6,
+    label: 'Ready in 6s',
+  });
+  assert.deepEqual(deliveryReadiness('2026-08-09T00:00:00.000Z', now), {
+    kind: 'ready',
+    label: 'Ready to deliver',
+  });
+});
 
 test('rounds a 5.8-second readiness remainder up to six seconds', () => {
   const now = new Date('2026-08-09T00:00:00.000Z');

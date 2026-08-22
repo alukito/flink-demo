@@ -25,11 +25,26 @@ export interface ShipperDeliveries {
   history: Delivery[];
 }
 
-export function secondsUntilReady(readyAt: string | undefined, now: Date): number {
-  const readyAtMilliseconds = Date.parse(readyAt ?? '');
-  if (!Number.isFinite(readyAtMilliseconds)) return 0;
+export type DeliveryReadiness =
+  | { kind: 'unavailable'; label: 'Readiness unavailable' }
+  | { kind: 'waiting'; label: string; seconds: number }
+  | { kind: 'ready'; label: 'Ready to deliver' };
 
-  return Math.max(0, Math.ceil((readyAtMilliseconds - now.getTime()) / 1000));
+export function deliveryReadiness(readyAt: string | undefined, now: Date): DeliveryReadiness {
+  const readyAtMilliseconds = Date.parse(readyAt ?? '');
+  if (!Number.isFinite(readyAtMilliseconds)) {
+    return { kind: 'unavailable', label: 'Readiness unavailable' };
+  }
+
+  const seconds = Math.max(0, Math.ceil((readyAtMilliseconds - now.getTime()) / 1000));
+  if (seconds > 0) return { kind: 'waiting', seconds, label: `Ready in ${seconds}s` };
+
+  return { kind: 'ready', label: 'Ready to deliver' };
+}
+
+export function secondsUntilReady(readyAt: string | undefined, now: Date): number {
+  const readiness = deliveryReadiness(readyAt, now);
+  return readiness.kind === 'waiting' ? readiness.seconds : 0;
 }
 
 export function copyDeliveries(deliveries: ShipperDeliveries): ShipperDeliveries {
