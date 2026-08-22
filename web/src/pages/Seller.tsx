@@ -7,8 +7,14 @@ import {
   addProduct, listSellerProducts, listSellerOrders, confirmOrder,
 } from '../api/client';
 import { isSellerOrderEvent } from '../lib/orderEvents';
+import { createFeedback, type ActionFeedback } from '../lib/feedback';
 import { loadLatestSellerOrders } from '../lib/sellerRefresh';
+import { ActionCard } from '../components/ActionCard';
 import { RoleLayout } from '../components/RoleLayout';
+import { Button } from '../components/ui/Button';
+import { EmptyState } from '../components/ui/EmptyState';
+import { FeedbackBanner } from '../components/ui/FeedbackBanner';
+import { StatusBadge, type StatusTone } from '../components/ui/StatusBadge';
 
 interface Product {
   id: string; name: string; price: number; quantity: number; seller_id: string;
@@ -24,8 +30,22 @@ interface Order {
   status: string; created_at: string;
 }
 
+const statusPresentation: Record<string, { label: string; tone: StatusTone }> = {
+  checkout: { label: 'Checkout', tone: 'warning' },
+  confirmed: { label: 'Confirmed', tone: 'info' },
+  picked: { label: 'Picked', tone: 'warning' },
+  delivered: { label: 'Delivered', tone: 'success' },
+};
+
 function formatPrice(price: number): string {
   return 'Rp ' + price.toLocaleString('id-ID');
+}
+
+function orderStatus(status: string) {
+  return statusPresentation[status] ?? {
+    label: status.charAt(0).toUpperCase() + status.slice(1),
+    tone: 'neutral' as const,
+  };
 }
 
 export default function Seller() {
@@ -37,52 +57,72 @@ export default function Seller() {
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [newProduct, setNewProduct] = useState({ name: '', price: '', quantity: '' });
-  const [error, setError] = useState('');
+  const [feedback, setFeedback] = useState<ActionFeedback | null>(null);
   const [adding, setAdding] = useState(false);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const nameInputRef = useRef<HTMLInputElement>(null);
+  const priceInputRef = useRef<HTMLInputElement>(null);
   const latestOrdersGeneration = useRef(0);
 
   const loadProducts = useCallback(async () => {
     if (!token) return;
-    const resp = await listSellerProducts(token);
-    if (resp.ok) setProducts(await resp.json());
+    try {
+      const resp = await listSellerProducts(token);
+      if (resp.ok) setProducts(await resp.json());
+    } catch {
+      setFeedback(createFeedback('error', 'Products could not be refreshed. Existing products are still shown.'));
+    }
   }, [token]);
 
   const loadOrders = useCallback(async () => {
     const generation = ++latestOrdersGeneration.current;
     if (!token) return;
-    await loadLatestSellerOrders({
-      generation,
-      getLatestGeneration: () => latestOrdersGeneration.current,
-      listOrders: () => listSellerOrders(token),
-      commit: setOrders,
-    });
+    try {
+      await loadLatestSellerOrders({
+        generation,
+        getLatestGeneration: () => latestOrdersGeneration.current,
+        listOrders: () => listSellerOrders(token),
+        commit: setOrders,
+      });
+    } catch {
+      setFeedback(createFeedback('error', 'Orders could not be refreshed. Existing orders are still shown.'));
+    }
   }, [token]);
 
-  useEffect(() => { loadProducts(); loadOrders(); }, [loadProducts, loadOrders]);
+  useEffect(() => { void loadProducts(); void loadOrders(); }, [loadProducts, loadOrders]);
 
   useEffect(() => {
-    if (events[0] && isSellerOrderEvent(events[0], id)) loadOrders();
+    if (events[0] && isSellerOrderEvent(events[0], id)) void loadOrders();
   }, [events, id, loadOrders]);
 
   const handleAddProduct = async () => {
     if (!token || adding) return;
-    setError('');
-    const price = parseInt(newProduct.price);
-    const quantity = parseInt(newProduct.quantity);
-    if (!newProduct.name || !price || price <= 0) {
-      setError('Name and positive price are required');
+    setFeedback(null);
+    const price = parseInt(newProduct.price, 10);
+    const quantity = parseInt(newProduct.quantity, 10);
+    if (!newProduct.name) {
+      setFeedback(createFeedback('error', 'Enter a product name.'));
+      nameInputRef.current?.focus();
+      return;
+    }
+    if (!price || price <= 0) {
+      setFeedback(createFeedback('error', 'Enter a price greater than zero.'));
+      priceInputRef.current?.focus();
       return;
     }
     setAdding(true);
     try {
       const resp = await addProduct(token, newProduct.name, price, quantity || 0);
       if (!resp.ok) {
-        setError(await resp.text());
+        const message = (await resp.text()).trim();
+        setFeedback(createFeedback('error', message || 'Product could not be added. Try again.'));
         return;
       }
       setNewProduct({ name: '', price: '', quantity: '' });
-      loadProducts();
+      setFeedback(createFeedback('success', 'Product added'));
+      void loadProducts();
+    } catch {
+      setFeedback(createFeedback('error', 'Product could not be added. Try again.'));
     } finally {
       setAdding(false);
     }
@@ -90,10 +130,19 @@ export default function Seller() {
 
   const handleConfirmOrder = async (orderId: string) => {
     if (!token || confirmingId) return;
+    setFeedback(null);
     setConfirmingId(orderId);
     try {
       const resp = await confirmOrder(token, orderId);
-      if (resp.ok) loadOrders();
+      if (!resp.ok) {
+        const message = (await resp.text()).trim();
+        setFeedback(createFeedback('error', message || 'Order could not be confirmed. Try again.'));
+        return;
+      }
+      setFeedback(createFeedback('success', 'Order confirmed'));
+      void loadOrders();
+    } catch {
+      setFeedback(createFeedback('error', 'Order could not be confirmed. Try again.'));
     } finally {
       setConfirmingId(null);
     }
@@ -104,6 +153,53 @@ export default function Seller() {
     navigate('/');
   };
 
+  const checkoutOrders = orders.filter((order) => order.status === 'checkout');
+  const lifecycleOrders = orders.filter((order) => order.status !== 'checkout');
+
+  const renderOrder = (order: Order) => {
+    const status = orderStatus(order.status);
+    const buyerName = order.buyer_name ?? order.buyer_id;
+
+    return (
+      <article className="seller-order-card" key={order.id}>
+        <header>
+          <div>
+            <span className="seller-order-card__label">Order from</span>
+            <h3>{buyerName}</h3>
+          </div>
+          <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
+        </header>
+        <ul className="seller-order-card__items">
+          {order.items.map((item, index) => (
+            <li key={`${item.product_id}-${index}`}>
+              <span>{item.quantity} × {item.product_name}</span>
+              <strong>{formatPrice(item.unit_price)}</strong>
+            </li>
+          ))}
+        </ul>
+        <div className="seller-order-card__total">
+          <span>Total</span>
+          <strong>{formatPrice(order.total_amount)}</strong>
+        </div>
+        <p className="seller-order-card__address">
+          <span>Ship to</span>
+          {order.shipping_address}
+        </p>
+        {order.status === 'checkout' ? (
+          <Button
+            type="button"
+            loading={confirmingId === order.id}
+            loadingLabel="Confirming…"
+            disabled={confirmingId !== null}
+            onClick={() => void handleConfirmOrder(order.id)}
+          >
+            Confirm order
+          </Button>
+        ) : null}
+      </article>
+    );
+  };
+
   return (
     <RoleLayout
       roleLabel="Sell"
@@ -111,104 +207,108 @@ export default function Seller() {
       pulseKey={events[0]?.event_id ?? 'initial'}
       onLogout={handleLogout}
     >
-      <div className="legacy-role-content">
+      <div className="seller-view">
+        {feedback ? <FeedbackBanner tone={feedback.tone}>{feedback.message}</FeedbackBanner> : null}
 
-      {/* Product Panel */}
-      <div style={{ background: 'white', borderRadius: '8px', padding: '20px', marginBottom: '20px', border: '1px solid #e5e7eb' }}>
-        <h2>Add Product</h2>
-        <div style={{ display: 'flex', gap: '12px', marginTop: '12px' }}>
-          <input
-            placeholder="Product name"
-            value={newProduct.name}
-            onChange={(e) => setNewProduct({ ...newProduct, name: e.target.value })}
-            style={{ flex: 1, padding: '8px' }}
-          />
-          <input
-            placeholder="Price (Rp)"
-            type="number"
-            value={newProduct.price}
-            onChange={(e) => setNewProduct({ ...newProduct, price: e.target.value })}
-            style={{ width: '140px', padding: '8px' }}
-          />
-          <input
-            placeholder="Quantity"
-            type="number"
-            value={newProduct.quantity}
-            onChange={(e) => setNewProduct({ ...newProduct, quantity: e.target.value })}
-            style={{ width: '100px', padding: '8px' }}
-          />
-          <button onClick={handleAddProduct} disabled={adding} style={{ padding: '8px 24px' }}>
-            {adding ? 'Adding...' : 'Add'}
-          </button>
-        </div>
-        {error && <p style={{ color: 'red', marginTop: '8px' }}>{error}</p>}
-
-        <h3 style={{ marginTop: '20px' }}>Your Products</h3>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginTop: '12px' }}>
-          {products.length === 0 ? (
-            <p style={{ color: '#9ca3af' }}>No products listed yet.</p>
-          ) : (
-            products.map((p) => (
-              <div key={p.id} style={{
-                padding: '12px', borderRadius: '6px', border: '1px solid #d1d5db',
-                minWidth: '200px', background: '#f9fafb',
-              }}>
-                <div style={{ fontWeight: 'bold' }}>{p.name}</div>
-                <div style={{ color: '#6b7280' }}>{formatPrice(p.price)}</div>
-                <div style={{ color: '#6b7280', fontSize: '12px' }}>Qty: {p.quantity}</div>
+        <div className="seller-workbench">
+          <ActionCard
+            className="seller-add-card"
+            title="Add a product"
+            description="Set the price and available stock for your marketplace listing."
+          >
+            <form
+              className="seller-product-form"
+              noValidate
+              onSubmit={(event) => {
+                event.preventDefault();
+                void handleAddProduct();
+              }}
+            >
+              <label className="seller-field">
+                <span>Product name</span>
+                <input
+                  ref={nameInputRef}
+                  value={newProduct.name}
+                  onChange={(event) => setNewProduct({ ...newProduct, name: event.target.value })}
+                  aria-invalid={feedback?.message === 'Enter a product name.' || undefined}
+                  autoComplete="off"
+                />
+              </label>
+              <div className="seller-form-pair">
+                <label className="seller-field">
+                  <span>Price in rupiah</span>
+                  <input
+                    ref={priceInputRef}
+                    type="number"
+                    min="1"
+                    inputMode="numeric"
+                    value={newProduct.price}
+                    onChange={(event) => setNewProduct({ ...newProduct, price: event.target.value })}
+                    aria-invalid={feedback?.message === 'Enter a price greater than zero.' || undefined}
+                  />
+                </label>
+                <label className="seller-field">
+                  <span>Stock quantity</span>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    value={newProduct.quantity}
+                    onChange={(event) => setNewProduct({ ...newProduct, quantity: event.target.value })}
+                  />
+                </label>
               </div>
-            ))
-          )}
-        </div>
-      </div>
+              <Button type="submit" loading={adding} loadingLabel="Adding…">
+                Add product
+              </Button>
+            </form>
+          </ActionCard>
 
-      {/* Order Inbox */}
-      <div style={{ background: 'white', borderRadius: '8px', padding: '20px', border: '1px solid #e5e7eb' }}>
-        <h2>Order Inbox</h2>
-        <div style={{ marginTop: '12px' }}>
-          {orders.length === 0 ? (
-            <p style={{ color: '#9ca3af' }}>No orders yet.</p>
-          ) : (
-            orders.map((o) => (
-              <div key={o.id} style={{
-                padding: '16px', borderRadius: '6px', border: '1px solid #d1d5db',
-                marginBottom: '12px', background: '#f9fafb',
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ fontWeight: 'bold' }}>Order from {o.buyer_name ?? o.buyer_id}</span>
-                  <span style={{
-                    padding: '2px 8px', borderRadius: '4px', fontSize: '12px',
-                    background: o.status === 'checkout' ? '#fef3c7' : '#d1fae5',
-                    color: o.status === 'checkout' ? '#d97706' : '#059669',
-                  }}>
-                    {o.status}
-                  </span>
-                </div>
-                <div style={{ marginTop: '8px', fontSize: '14px', color: '#6b7280' }}>
-                  {o.items.map((item, i) => (
-                    <div key={i}>{item.quantity}x {item.product_name} ({formatPrice(item.unit_price)})</div>
-                  ))}
-                </div>
-                <div style={{ marginTop: '8px', fontWeight: 'bold' }}>
-                  Total: {formatPrice(o.total_amount)}
-                </div>
-                <div style={{ marginTop: '4px', color: '#6b7280', fontSize: '12px' }}>
-                  Ship to: {o.shipping_address}
-                </div>
-                {o.status === 'checkout' && (
-                  <button
-                    onClick={() => handleConfirmOrder(o.id)}
-                    disabled={confirmingId === o.id}
-                    style={{ marginTop: '12px', padding: '6px 20px' }}
-                  >
-                    {confirmingId === o.id ? 'Confirming...' : 'Confirm Order'}
-                  </button>
-                )}
+          <ActionCard
+            className="seller-orders"
+            title="Orders to confirm"
+            description="Confirm new checkouts, then follow each order through delivery."
+          >
+            {checkoutOrders.length > 0 ? (
+              <div className="seller-order-list seller-order-list--actionable">
+                {checkoutOrders.map(renderOrder)}
               </div>
-            ))
-          )}
+            ) : (
+              <EmptyState title="No orders need confirmation" description="New checkouts will appear here." />
+            )}
+
+            {lifecycleOrders.length > 0 ? (
+              <div className="seller-lifecycle">
+                <h3>Order progress</h3>
+                <div className="seller-order-list">
+                  {lifecycleOrders.map(renderOrder)}
+                </div>
+              </div>
+            ) : null}
+          </ActionCard>
+
+          <section className="seller-products" aria-labelledby="seller-products-title">
+            <header className="seller-section-header">
+              <div>
+                <span className="seller-section-header__eyebrow">Inventory</span>
+                <h2 id="seller-products-title">Your products</h2>
+              </div>
+              <span className="seller-section-header__count">{products.length} listed</span>
+            </header>
+            {products.length === 0 ? (
+              <EmptyState title="No products yet" description="Add your first product to start selling." />
+            ) : (
+              <div className="seller-product-grid">
+                {products.map((product) => (
+                  <article className="seller-product-card" key={product.id}>
+                    <span className="seller-product-card__stock">{product.quantity} in stock</span>
+                    <h3>{product.name}</h3>
+                    <strong>{formatPrice(product.price)}</strong>
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
         </div>
-      </div>
       </div>
     </RoleLayout>
   );
