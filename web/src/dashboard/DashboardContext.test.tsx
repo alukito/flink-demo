@@ -19,11 +19,12 @@ vi.mock('../hooks/useWebSocket', () => ({
 let onMessage: ((message: DashboardMessage) => void) | undefined;
 
 function Probe() {
-  const { clearAll, connectionState, events, stats } = useDashboard();
+  const { clearAll, connectionState, events, recentAlerts, stats } = useDashboard();
   return (
     <>
       <output data-testid="event-count">{events.length}</output>
       <output data-testid="stat-count">{stats.length}</output>
+      <output data-testid="alert-count">{recentAlerts.length}</output>
       <output data-testid="connection-state">{connectionState}</output>
       <button onClick={clearAll}>reset probe</button>
     </>
@@ -84,4 +85,49 @@ test('shares one dashboard token request across the StrictMode effect replay', a
 
   await waitFor(() => expect(createSession).toHaveBeenCalledTimes(1));
   await waitFor(() => expect(screen.getByTestId('connection-state')).toHaveTextContent('live'));
+});
+
+test('drops replayed derived state until this dashboard session receives a live domain event', async () => {
+  render(
+    <EventProvider>
+      <DashboardProvider><Probe /></DashboardProvider>
+    </EventProvider>,
+  );
+
+  await waitFor(() => expect(onMessage).toBeDefined());
+  act(() => onMessage?.({
+    metric: 'tx_count',
+    scope: 'daily',
+    window_end: '2026-08-16T17:00:00.000Z',
+    value: 9,
+    detail: {},
+  }));
+  act(() => onMessage?.({
+    alert_id: 'replayed-alert',
+    pattern: 'order_surge',
+    detected_at: '2026-08-15T03:00:00.000Z',
+    detail: { checkout_count: 3 },
+  }));
+
+  expect(screen.getByTestId('stat-count')).toHaveTextContent('0');
+  expect(screen.getByTestId('alert-count')).toHaveTextContent('0');
+
+  act(() => onMessage?.({
+    event_id: 'event-after-open',
+    event_type: 'cart.checkout',
+    actor_id: 'buyer-1',
+    actor_role: 'buyer',
+    timestamp: new Date().toISOString(),
+    payload: {},
+  }));
+  act(() => onMessage?.({
+    metric: 'tx_count',
+    scope: 'daily',
+    window_end: '2026-08-16T17:00:00.000Z',
+    value: 1,
+    detail: {},
+  }));
+
+  expect(screen.getByTestId('event-count')).toHaveTextContent('1');
+  expect(screen.getByTestId('stat-count')).toHaveTextContent('1');
 });

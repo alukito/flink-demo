@@ -155,6 +155,12 @@ test('keeps Level 3 histories out of internal scroll containers', () => {
   expect(cssRule('.delivery-duration-chart').style.overflowX).toBe('hidden');
 });
 
+test('keeps expandable event payloads at the minimum interactive target height', () => {
+  expect(cssRule('.event-payload summary').style.minHeight).toBe('44px');
+  expect(cssRule('.event-payload summary').style.display).toBe('flex');
+  expect(cssRule('.event-payload summary').style.alignItems).toBe('center');
+});
+
 test('uses a twelve-pixel minimum for projector chart labels and metadata', () => {
   expect(cssRule('.metric-bucket-y-tick text, .metric-bucket-x-label').style.fontSize).toBe('12px');
   expect(cssRule('.metric-bucket-tooltip').style.fontSize).toBe('0.75rem');

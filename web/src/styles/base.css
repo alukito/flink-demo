@@ -631,6 +631,9 @@ button:disabled {
 }
 
 .event-payload summary {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
   overflow: hidden;
   cursor: pointer;
   text-overflow: ellipsis;
