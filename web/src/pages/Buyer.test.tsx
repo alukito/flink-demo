@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
@@ -86,6 +86,29 @@ function errorResponse(message = ''): Response {
     statusText: 'Service Unavailable',
     headers: { 'Content-Type': 'text/plain' },
   });
+}
+
+function deferredResponse() {
+  let resolve!: (response: Response) => void;
+  let reject!: (error: Error) => void;
+  const promise = new Promise<Response>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
+function deferredJsonResponse() {
+  let resolve!: (data: unknown) => void;
+  const body = new Promise<unknown>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  const json = vi.fn(() => body);
+  return {
+    response: { ok: true, json } as unknown as Response,
+    json,
+    resolve,
+  };
 }
 
 function buyerEvent(eventId: string, eventType: string) {
@@ -314,8 +337,8 @@ describe('Buyer', () => {
     await user.type(screen.getByRole('textbox', { name: 'Shipping address' }), 'Jl. Merdeka 8');
     await user.click(screen.getByRole('button', { name: 'Place order' }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(expectedError);
-    expect(screen.getByRole('dialog', { name: 'Review your cart' })).toBeInTheDocument();
+    const dialog = screen.getByRole('dialog', { name: 'Review your cart' });
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(expectedError);
     expect(screen.getByRole('textbox', { name: 'Shipping address' })).toHaveValue('Jl. Merdeka 8');
     expect(screen.getByRole('button', { name: /Review cart.*1 item/i })).toBeInTheDocument();
     expect(screen.queryByText('Order placed')).not.toBeInTheDocument();
@@ -348,6 +371,100 @@ describe('Buyer', () => {
     ]));
     expect(screen.getByRole('heading', { name: 'Flores coffee' })).toBeVisible();
     expect(screen.getByText('Confirmed')).toBeVisible();
+  });
+
+  it('keeps the newest product success when an older refresh rejects', async () => {
+    const olderRefresh = deferredResponse();
+    const newestProducts = [{ ...products[0], id: 'newest-coffee', name: 'Newest coffee' }];
+    listBuyerProductsMock
+      .mockReset()
+      .mockImplementationOnce(async () => jsonResponse(products))
+      .mockReturnValueOnce(olderRefresh.promise)
+      .mockImplementationOnce(async () => jsonResponse(newestProducts));
+    const view = renderBuyer();
+
+    await screen.findByRole('heading', { name: 'Flores coffee' });
+    buyerEvents = [buyerEvent('product-refresh-old', 'product.listed')];
+    view.rerender(<MemoryRouter><Buyer /></MemoryRouter>);
+    await waitFor(() => expect(listBuyerProductsMock).toHaveBeenCalledTimes(2));
+    buyerEvents = [buyerEvent('product-refresh-new', 'product.listed')];
+    view.rerender(<MemoryRouter><Buyer /></MemoryRouter>);
+    expect(await screen.findByRole('heading', { name: 'Newest coffee' })).toBeVisible();
+
+    await act(async () => olderRefresh.reject(new Error('late catalog failure')));
+    expect(screen.getByRole('heading', { name: 'Newest coffee' })).toBeVisible();
+    expect(screen.queryByText('Products could not be refreshed. Existing products are still shown.')).not.toBeInTheDocument();
+  });
+
+  it('keeps the current product failure when an older refresh succeeds', async () => {
+    const olderRefresh = deferredJsonResponse();
+    const olderProducts = [{ ...products[0], id: 'older-coffee', name: 'Older coffee' }];
+    listBuyerProductsMock
+      .mockReset()
+      .mockImplementationOnce(async () => jsonResponse(products))
+      .mockImplementationOnce(async () => olderRefresh.response)
+      .mockImplementationOnce(async () => errorResponse('current failure'));
+    const view = renderBuyer();
+
+    await screen.findByRole('heading', { name: 'Flores coffee' });
+    buyerEvents = [buyerEvent('product-refresh-old', 'product.listed')];
+    view.rerender(<MemoryRouter><Buyer /></MemoryRouter>);
+    await waitFor(() => expect(olderRefresh.json).toHaveBeenCalledTimes(1));
+    buyerEvents = [buyerEvent('product-refresh-new', 'product.listed')];
+    view.rerender(<MemoryRouter><Buyer /></MemoryRouter>);
+    expect(await screen.findByText('Products could not be refreshed. Existing products are still shown.')).toBeVisible();
+
+    await act(async () => olderRefresh.resolve(olderProducts));
+    expect(screen.getByText('Products could not be refreshed. Existing products are still shown.')).toBeVisible();
+    expect(screen.queryByRole('heading', { name: 'Older coffee' })).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Flores coffee' })).toBeVisible();
+  });
+
+  it('keeps the newest order success when an older refresh rejects', async () => {
+    const olderRefresh = deferredResponse();
+    const newestOrders = [{ ...orders[0], id: 'newest-order', seller_name: 'Newest seller' }];
+    listBuyerOrdersMock
+      .mockReset()
+      .mockImplementationOnce(async () => jsonResponse(orders))
+      .mockReturnValueOnce(olderRefresh.promise)
+      .mockImplementationOnce(async () => jsonResponse(newestOrders));
+    const view = renderBuyer();
+
+    await screen.findByText('Confirmed');
+    buyerEvents = [buyerEvent('order-refresh-old', 'order.confirmed')];
+    view.rerender(<MemoryRouter><Buyer /></MemoryRouter>);
+    await waitFor(() => expect(listBuyerOrdersMock).toHaveBeenCalledTimes(2));
+    buyerEvents = [buyerEvent('order-refresh-new', 'order.confirmed')];
+    view.rerender(<MemoryRouter><Buyer /></MemoryRouter>);
+    expect(await screen.findByRole('heading', { name: 'Newest seller' })).toBeVisible();
+
+    await act(async () => olderRefresh.reject(new Error('late order failure')));
+    expect(screen.getByRole('heading', { name: 'Newest seller' })).toBeVisible();
+    expect(screen.queryByText('Orders could not be refreshed. Existing orders are still shown.')).not.toBeInTheDocument();
+  });
+
+  it('keeps the current order failure when an older refresh succeeds', async () => {
+    const olderRefresh = deferredJsonResponse();
+    const olderOrders = [{ ...orders[0], id: 'older-order', seller_name: 'Older seller' }];
+    listBuyerOrdersMock
+      .mockReset()
+      .mockImplementationOnce(async () => jsonResponse(orders))
+      .mockImplementationOnce(async () => olderRefresh.response)
+      .mockImplementationOnce(async () => errorResponse('current failure'));
+    const view = renderBuyer();
+
+    await screen.findByText('Confirmed');
+    buyerEvents = [buyerEvent('order-refresh-old', 'order.confirmed')];
+    view.rerender(<MemoryRouter><Buyer /></MemoryRouter>);
+    await waitFor(() => expect(olderRefresh.json).toHaveBeenCalledTimes(1));
+    buyerEvents = [buyerEvent('order-refresh-new', 'order.confirmed')];
+    view.rerender(<MemoryRouter><Buyer /></MemoryRouter>);
+    expect(await screen.findByText('Orders could not be refreshed. Existing orders are still shown.')).toBeVisible();
+
+    await act(async () => olderRefresh.resolve(olderOrders));
+    expect(screen.getByText('Orders could not be refreshed. Existing orders are still shown.')).toBeVisible();
+    expect(screen.queryByRole('heading', { name: 'Older seller' })).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Bima' })).toBeVisible();
   });
 
   it('expires success feedback but keeps an action error until a later action replaces it', async () => {

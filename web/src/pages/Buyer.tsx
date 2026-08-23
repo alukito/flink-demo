@@ -57,6 +57,10 @@ interface Order {
   created_at: string;
 }
 
+type BuyerFeedback = ActionFeedback & {
+  surface: 'page' | 'checkout';
+};
+
 function formatPrice(price: number): string {
   return `Rp ${price.toLocaleString('id-ID')}`;
 }
@@ -87,44 +91,58 @@ export default function Buyer() {
   const [showCheckout, setShowCheckout] = useState(false);
   const [checkingOut, setCheckingOut] = useState(false);
   const [cartAddingId, setCartAddingId] = useState<string | null>(null);
-  const [feedback, setFeedback] = useState<ActionFeedback | null>(null);
+  const [feedback, setFeedback] = useState<BuyerFeedback | null>(null);
   const [productRefreshError, setProductRefreshError] = useState<string | null>(null);
   const [orderRefreshError, setOrderRefreshError] = useState<string | null>(null);
   const cartTriggerRef = useRef<HTMLButtonElement>(null);
   const recentOrdersRef = useRef<HTMLElement>(null);
   const focusOrdersAfterCheckoutRef = useRef(false);
+  const latestProductsGeneration = useRef(0);
+  const latestOrdersGeneration = useRef(0);
   const shouldRestoreCartFocus = useCallback(
     () => !focusOrdersAfterCheckoutRef.current,
     [],
   );
 
   const loadProducts = useCallback(async () => {
+    const generation = ++latestProductsGeneration.current;
     if (!token) return;
     try {
       const response = await listBuyerProducts(token);
+      if (generation !== latestProductsGeneration.current) return;
       if (!response.ok) {
         setProductRefreshError('Products could not be refreshed. Existing products are still shown.');
         return;
       }
-      setProducts(await response.json());
+      const nextProducts = await response.json();
+      if (generation !== latestProductsGeneration.current) return;
+      setProducts(nextProducts);
       setProductRefreshError(null);
     } catch {
-      setProductRefreshError('Products could not be refreshed. Existing products are still shown.');
+      if (generation === latestProductsGeneration.current) {
+        setProductRefreshError('Products could not be refreshed. Existing products are still shown.');
+      }
     }
   }, [token]);
 
   const loadOrders = useCallback(async () => {
+    const generation = ++latestOrdersGeneration.current;
     if (!token) return;
     try {
       const response = await listBuyerOrders(token);
+      if (generation !== latestOrdersGeneration.current) return;
       if (!response.ok) {
         setOrderRefreshError('Orders could not be refreshed. Existing orders are still shown.');
         return;
       }
-      setOrders(await response.json());
+      const nextOrders = await response.json();
+      if (generation !== latestOrdersGeneration.current) return;
+      setOrders(nextOrders);
       setOrderRefreshError(null);
     } catch {
-      setOrderRefreshError('Orders could not be refreshed. Existing orders are still shown.');
+      if (generation === latestOrdersGeneration.current) {
+        setOrderRefreshError('Orders could not be refreshed. Existing orders are still shown.');
+      }
     }
   }, [token]);
 
@@ -169,7 +187,7 @@ export default function Buyer() {
       const response = await addToCart(token, cartId, product.id, 1);
       if (!response.ok) {
         const message = (await response.text()).trim();
-        setFeedback(createFeedback('error', message || `Could not add ${product.name} to the cart.`));
+        setFeedback({ ...createFeedback('error', message || `Could not add ${product.name} to the cart.`), surface: 'page' });
         return;
       }
       setCart((current) => {
@@ -181,9 +199,9 @@ export default function Buyer() {
             : item
         ));
       });
-      setFeedback(createFeedback('success', `${product.name} added to cart.`));
+      setFeedback({ ...createFeedback('success', `${product.name} added to cart.`), surface: 'page' });
     } catch {
-      setFeedback(createFeedback('error', `Could not add ${product.name} to the cart.`));
+      setFeedback({ ...createFeedback('error', `Could not add ${product.name} to the cart.`), surface: 'page' });
     } finally {
       setCartAddingId(null);
     }
@@ -200,7 +218,7 @@ export default function Buyer() {
       const response = await checkout(token, cartId, items, shippingAddress);
       if (!response.ok) {
         const message = await response.text();
-        setFeedback(createFeedback('error', message || 'Could not place order.'));
+        setFeedback({ ...createFeedback('error', message || 'Could not place order.'), surface: 'checkout' });
         return;
       }
 
@@ -209,10 +227,10 @@ export default function Buyer() {
       setShippingAddress('');
       focusOrdersAfterCheckoutRef.current = true;
       setShowCheckout(false);
-      setFeedback(createFeedback('success', 'Order placed'));
+      setFeedback({ ...createFeedback('success', 'Order placed'), surface: 'page' });
       await loadOrders();
     } catch {
-      setFeedback(createFeedback('error', 'Could not place order.'));
+      setFeedback({ ...createFeedback('error', 'Could not place order.'), surface: 'checkout' });
     } finally {
       setCheckingOut(false);
     }
@@ -245,7 +263,7 @@ export default function Buyer() {
 
         <div className="buyer-workspace" data-cart-open={showCheckout || undefined}>
           <div className="buyer-content">
-            {feedback ? (
+            {feedback && (!showCheckout || feedback.surface !== 'checkout') ? (
               <FeedbackBanner tone={feedback.tone}>{feedback.message}</FeedbackBanner>
             ) : null}
             {productRefreshError ? (
@@ -351,6 +369,7 @@ export default function Buyer() {
             items={cart}
             total={cartTotal}
             address={shippingAddress}
+            error={feedback?.surface === 'checkout' && feedback.tone === 'error' ? feedback.message : null}
             submitting={checkingOut}
             returnFocusRef={cartTriggerRef}
             shouldRestoreFocus={shouldRestoreCartFocus}

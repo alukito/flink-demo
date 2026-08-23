@@ -9,6 +9,7 @@ import {
 } from 'react';
 import { FOCUSABLE_SELECTOR, isolateModalBackground, nextFocusIndex } from '../lib/focusTrap';
 import { Button } from './ui/Button';
+import { FeedbackBanner } from './ui/FeedbackBanner';
 
 export interface CartItemView {
   product: {
@@ -24,6 +25,7 @@ export interface CartSheetProps {
   items: CartItemView[];
   total: number;
   address: string;
+  error?: string | null;
   submitting: boolean;
   returnFocusRef: RefObject<HTMLButtonElement | null>;
   shouldRestoreFocus?: () => boolean;
@@ -50,6 +52,7 @@ export function CartSheet({
   items,
   total,
   address,
+  error = null,
   submitting,
   returnFocusRef,
   shouldRestoreFocus = alwaysRestoreFocus,
@@ -169,6 +172,8 @@ export function CartSheet({
             <span>Total</span>
             <strong>{formatPrice(total)}</strong>
           </div>
+
+          {error ? <FeedbackBanner tone="error">{error}</FeedbackBanner> : null}
 
           <label className="cart-sheet__address">
             <span>Shipping address</span>

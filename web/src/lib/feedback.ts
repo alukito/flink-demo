@@ -11,9 +11,9 @@ export function createFeedback(
   return { id: crypto.randomUUID(), tone, message };
 }
 
-export function expireFeedback(
-  current: ActionFeedback | null,
+export function expireFeedback<T extends ActionFeedback>(
+  current: T | null,
   id: string,
-): ActionFeedback | null {
+): T | null {
   return current?.id === id ? null : current;
 }
