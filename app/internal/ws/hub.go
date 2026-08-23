@@ -59,6 +59,15 @@ func metricCacheKey(data []byte) (string, bool) {
 	return identity.Metric + "\x00" + identity.Scope, true
 }
 
+func dashboardReplayMessage(data []byte) ([]byte, error) {
+	var message map[string]json.RawMessage
+	if err := json.Unmarshal(data, &message); err != nil {
+		return nil, err
+	}
+	message["replay"] = json.RawMessage("true")
+	return json.Marshal(message)
+}
+
 // Client represents a connected WebSocket client.
 type Client struct {
 	ID   string
@@ -113,7 +122,11 @@ func (h *Hub) Run() {
 				}
 				sort.Strings(keys)
 				for _, key := range keys {
-					message := append([]byte(nil), h.metricCache[key]...)
+					message, err := dashboardReplayMessage(h.metricCache[key])
+					if err != nil {
+						slog.Warn("failed to mark dashboard metric replay", "error", err)
+						continue
+					}
 					select {
 					case client.send <- message:
 					default:
@@ -138,7 +151,11 @@ func (h *Hub) Run() {
 					return alerts[i].detectedAt.Before(alerts[j].detectedAt)
 				})
 				for _, alert := range alerts {
-					message := append([]byte(nil), alert.data...)
+					message, err := dashboardReplayMessage(alert.data)
+					if err != nil {
+						slog.Warn("failed to mark dashboard alert replay", "error", err)
+						continue
+					}
 					select {
 					case client.send <- message:
 					default:

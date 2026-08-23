@@ -64,20 +64,27 @@ export default function Seller() {
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
   const priceInputRef = useRef<HTMLInputElement>(null);
+  const latestProductsGeneration = useRef(0);
   const latestOrdersGeneration = useRef(0);
 
   const loadProducts = useCallback(async () => {
+    const generation = ++latestProductsGeneration.current;
     if (!token) return;
     try {
       const resp = await listSellerProducts(token);
+      if (generation !== latestProductsGeneration.current) return;
       if (!resp.ok) {
         setProductRefreshError('Products could not be refreshed. Existing products are still shown.');
         return;
       }
-      setProducts(await resp.json());
+      const nextProducts = await resp.json();
+      if (generation !== latestProductsGeneration.current) return;
+      setProducts(nextProducts);
       setProductRefreshError(null);
     } catch {
-      setProductRefreshError('Products could not be refreshed. Existing products are still shown.');
+      if (generation === latestProductsGeneration.current) {
+        setProductRefreshError('Products could not be refreshed. Existing products are still shown.');
+      }
     }
   }, [token]);
 

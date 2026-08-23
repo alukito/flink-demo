@@ -91,6 +91,55 @@ test('cancelling the all-level Clear confirmation preserves dashboard state', as
   expect(screen.getByText('retained marker')).toBeInTheDocument();
 });
 
+test('enters the Clear dialog and contains Tab and Shift+Tab focus', async () => {
+  const user = userEvent.setup();
+  renderDashboard('/dashboard/live');
+
+  await user.click(screen.getByRole('button', { name: 'Clear dashboard' }));
+  const dialog = screen.getByRole('dialog', { name: 'Clear dashboard data?' });
+  const cancel = within(dialog).getByRole('button', { name: 'Cancel' });
+  const confirm = within(dialog).getByRole('button', { name: 'Clear dashboard' });
+  expect(cancel).toHaveFocus();
+
+  confirm.focus();
+  await user.tab();
+  expect(cancel).toHaveFocus();
+  await user.tab({ shift: true });
+  expect(confirm).toHaveFocus();
+});
+
+test('makes the dashboard inert and redirects programmatic focus into the Clear dialog', async () => {
+  const user = userEvent.setup();
+  renderDashboard('/dashboard/live');
+  const backgroundLink = screen.getByRole('link', { name: /02.*Window metrics/i });
+
+  await user.click(screen.getByRole('button', { name: 'Clear dashboard' }));
+  const cancel = within(screen.getByRole('dialog', { name: 'Clear dashboard data?' }))
+    .getByRole('button', { name: 'Cancel' });
+  expect(document.querySelector('.dashboard-shell__header')).toHaveAttribute('inert');
+  expect(document.querySelector('.dashboard-shell__body')).toHaveAttribute('inert');
+  expect(document.querySelector('.dashboard-adjacent')).toHaveAttribute('inert');
+
+  backgroundLink.focus();
+  expect(cancel).toHaveFocus();
+});
+
+test('cancels Clear with Escape, removes inertness, and restores trigger focus', async () => {
+  const user = userEvent.setup();
+  renderDashboard('/dashboard/live');
+  const trigger = screen.getByRole('button', { name: 'Clear dashboard' });
+
+  await user.click(trigger);
+  await user.keyboard('{Escape}');
+
+  expect(screen.queryByRole('dialog', { name: 'Clear dashboard data?' })).not.toBeInTheDocument();
+  expect(document.querySelector('.dashboard-shell__header')).not.toHaveAttribute('inert');
+  expect(document.querySelector('.dashboard-shell__body')).not.toHaveAttribute('inert');
+  expect(document.querySelector('.dashboard-adjacent')).not.toHaveAttribute('inert');
+  expect(trigger).toHaveFocus();
+  expect(clearAll).not.toHaveBeenCalled();
+});
+
 test('confirms and clears all dashboard data once', async () => {
   const user = userEvent.setup();
   renderDashboard('/dashboard/patterns');

@@ -78,6 +78,34 @@ func TestBroadcastCEPAlertOnlyQueuesForDashboard(t *testing.T) {
 	assert.Empty(t, buyer.send)
 }
 
+func TestDashboardCacheReplayIsMarkedWithoutChangingLiveMessages(t *testing.T) {
+	hub := NewHub()
+	hub.now = func() time.Time { return time.Date(2026, 8, 1, 18, 0, 0, 0, time.UTC) }
+	go hub.Run()
+	defer hub.Close()
+
+	dashboard := &Client{Name: "live", Role: "dashboard", send: make(chan []byte, 4)}
+	hub.Register <- dashboard
+	metric := []byte(`{"metric":"tx_count","scope":"daily","window_end":"2026-07-25T17:00:00Z","value":2,"detail":{}}`)
+	alert := []byte(`{"alert_id":"slow_delivery:o1","detected_at":"2026-08-01T10:08:00Z","detail":{}}`)
+	hub.BroadcastRaw(metric)
+	hub.BroadcastCEPAlertRaw(alert)
+
+	require.Eventually(t, func() bool { return len(dashboard.send) == 2 }, time.Second, 10*time.Millisecond)
+	assert.ElementsMatch(t, []string{string(metric), string(alert)}, []string{
+		string(<-dashboard.send),
+		string(<-dashboard.send),
+	})
+
+	waitForRawDrain(t, hub)
+	waitForAlertCache(t, hub, 1)
+	reloaded := &Client{Name: "reloaded", Role: "dashboard", send: make(chan []byte, 4)}
+	hub.Register <- reloaded
+	require.Eventually(t, func() bool { return len(reloaded.send) == 2 }, time.Second, 10*time.Millisecond)
+	assert.JSONEq(t, `{"metric":"tx_count","scope":"daily","window_end":"2026-07-25T17:00:00Z","value":2,"detail":{},"replay":true}`, string(<-reloaded.send))
+	assert.JSONEq(t, `{"alert_id":"slow_delivery:o1","detected_at":"2026-08-01T10:08:00Z","detail":{},"replay":true}`, string(<-reloaded.send))
+}
+
 func TestCEPAlertReplayCopiesBytesAndReplacesDuplicateIDs(t *testing.T) {
 	hub := NewHub()
 	hub.now = func() time.Time { return time.Date(2026, 8, 1, 18, 0, 0, 0, time.UTC) }
@@ -86,7 +114,6 @@ func TestCEPAlertReplayCopiesBytesAndReplacesDuplicateIDs(t *testing.T) {
 
 	first := []byte(`{"alert_id":"slow_delivery:o1","detected_at":"2026-08-01T10:07:00Z","detail":{"attempt":1}}`)
 	latest := []byte(`{"alert_id":"slow_delivery:o1","detected_at":"2026-08-01T10:08:00Z","detail":{"attempt":2}}`)
-	expected := append([]byte(nil), latest...)
 	hub.BroadcastCEPAlertRaw(first)
 	waitForAlertCache(t, hub, 1)
 	first[0] = '!'
@@ -98,13 +125,13 @@ func TestCEPAlertReplayCopiesBytesAndReplacesDuplicateIDs(t *testing.T) {
 	hub.Register <- dashboard
 	require.Eventually(t, func() bool { return len(dashboard.send) == 1 }, time.Second, 10*time.Millisecond)
 	got := <-dashboard.send
-	assert.True(t, bytes.Equal(expected, got))
+	assert.JSONEq(t, `{"alert_id":"slow_delivery:o1","detected_at":"2026-08-01T10:08:00Z","detail":{"attempt":2},"replay":true}`, string(got))
 	got[0] = '!'
 
 	secondDashboard := &Client{Name: "dash-2", Role: "dashboard", send: make(chan []byte, 2)}
 	hub.Register <- secondDashboard
 	require.Eventually(t, func() bool { return len(secondDashboard.send) == 1 }, time.Second, 10*time.Millisecond)
-	assert.True(t, bytes.Equal(expected, <-secondDashboard.send))
+	assert.JSONEq(t, `{"alert_id":"slow_delivery:o1","detected_at":"2026-08-01T10:08:00Z","detail":{"attempt":2},"replay":true}`, string(<-secondDashboard.send))
 }
 
 func TestCEPAlertReplayPrunesEntriesOlderThanEightHours(t *testing.T) {
@@ -122,7 +149,7 @@ func TestCEPAlertReplayPrunesEntriesOlderThanEightHours(t *testing.T) {
 	dashboard := &Client{Name: "dash", Role: "dashboard", send: make(chan []byte, 2)}
 	hub.Register <- dashboard
 	require.Eventually(t, func() bool { return len(dashboard.send) == 1 }, time.Second, 10*time.Millisecond)
-	assert.JSONEq(t, `{"alert_id":"retained","detected_at":"2026-08-01T10:00:00Z"}`, string(<-dashboard.send))
+	assert.JSONEq(t, `{"alert_id":"retained","detected_at":"2026-08-01T10:00:00Z","replay":true}`, string(<-dashboard.send))
 }
 
 func TestCEPAlertReplaySortsByDetectedAtThenAlertID(t *testing.T) {
@@ -139,9 +166,9 @@ func TestCEPAlertReplaySortsByDetectedAtThenAlertID(t *testing.T) {
 	dashboard := &Client{Name: "dash", Role: "dashboard", send: make(chan []byte, 4)}
 	hub.Register <- dashboard
 	require.Eventually(t, func() bool { return len(dashboard.send) == 3 }, time.Second, 10*time.Millisecond)
-	assert.JSONEq(t, `{"alert_id":"z","detected_at":"2026-08-01T10:00:00Z"}`, string(<-dashboard.send))
-	assert.JSONEq(t, `{"alert_id":"a","detected_at":"2026-08-01T10:01:00Z"}`, string(<-dashboard.send))
-	assert.JSONEq(t, `{"alert_id":"b","detected_at":"2026-08-01T10:01:00Z"}`, string(<-dashboard.send))
+	assert.JSONEq(t, `{"alert_id":"z","detected_at":"2026-08-01T10:00:00Z","replay":true}`, string(<-dashboard.send))
+	assert.JSONEq(t, `{"alert_id":"a","detected_at":"2026-08-01T10:01:00Z","replay":true}`, string(<-dashboard.send))
+	assert.JSONEq(t, `{"alert_id":"b","detected_at":"2026-08-01T10:01:00Z","replay":true}`, string(<-dashboard.send))
 }
 
 func TestMalformedCEPAlertIsDeliveredLiveButNotReplayed(t *testing.T) {
@@ -178,7 +205,7 @@ func TestDashboardRegistrationReplaysLatestMetricPerScope(t *testing.T) {
 	hub.Register <- dashboard
 
 	require.Eventually(t, func() bool { return len(dashboard.send) == 1 }, time.Second, 10*time.Millisecond)
-	assert.True(t, bytes.Equal(latest, <-dashboard.send))
+	assert.JSONEq(t, `{"metric":"tx_count","scope":"daily","window_end":"2026-07-25T17:00:00Z","value":2,"detail":{},"replay":true}`, string(<-dashboard.send))
 }
 
 func TestDashboardMetricReplayUsesSortedMetricScopeOrder(t *testing.T) {
@@ -196,8 +223,8 @@ func TestDashboardMetricReplayUsesSortedMetricScopeOrder(t *testing.T) {
 	dashboard := &Client{Name: "dash", Role: "dashboard", send: make(chan []byte, 10)}
 	hub.Register <- dashboard
 	require.Eventually(t, func() bool { return len(dashboard.send) == 2 }, time.Second, 10*time.Millisecond)
-	assert.True(t, bytes.Equal(first, <-dashboard.send))
-	assert.True(t, bytes.Equal(second, <-dashboard.send))
+	assert.JSONEq(t, `{"metric":"cart_adds_count","scope":"window","window_end":"2026-07-25T17:00:00Z","value":1,"detail":{},"replay":true}`, string(<-dashboard.send))
+	assert.JSONEq(t, `{"metric":"tx_count","scope":"daily","window_end":"2026-07-25T17:00:00Z","value":2,"detail":{},"replay":true}`, string(<-dashboard.send))
 }
 
 func TestMetricReplayIsDashboardOnlyAndOwnsEveryBuffer(t *testing.T) {
@@ -206,7 +233,6 @@ func TestMetricReplayIsDashboardOnlyAndOwnsEveryBuffer(t *testing.T) {
 	defer hub.Close()
 
 	source := []byte(`{"metric":"revenue","scope":"daily","window_end":"2026-07-25T17:00:00Z","value":489000,"detail":{}}`)
-	expected := append([]byte(nil), source...)
 	hub.BroadcastRaw(source)
 	source[0] = '!'
 	waitForRawDrain(t, hub)
@@ -223,10 +249,10 @@ func TestMetricReplayIsDashboardOnlyAndOwnsEveryBuffer(t *testing.T) {
 	}, time.Second, 10*time.Millisecond)
 	firstMessage := <-first.send
 	secondMessage := <-second.send
-	assert.True(t, bytes.Equal(expected, firstMessage))
-	assert.True(t, bytes.Equal(expected, secondMessage))
+	assert.JSONEq(t, `{"metric":"revenue","scope":"daily","window_end":"2026-07-25T17:00:00Z","value":489000,"detail":{},"replay":true}`, string(firstMessage))
+	assert.JSONEq(t, `{"metric":"revenue","scope":"daily","window_end":"2026-07-25T17:00:00Z","value":489000,"detail":{},"replay":true}`, string(secondMessage))
 	firstMessage[0] = '!'
-	assert.True(t, bytes.Equal(expected, secondMessage))
+	assert.JSONEq(t, `{"metric":"revenue","scope":"daily","window_end":"2026-07-25T17:00:00Z","value":489000,"detail":{},"replay":true}`, string(secondMessage))
 	assert.Never(t, func() bool { return len(buyer.send) != 0 }, 100*time.Millisecond, 10*time.Millisecond)
 }
 

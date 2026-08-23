@@ -15,7 +15,9 @@ export interface WindowStat {
   value: number;
   detail: Record<string, string>;
 }
-export type DashboardMessage = EventEnvelope | WindowStat | CepAlert;
+export type DashboardMessage = (EventEnvelope | WindowStat | CepAlert) & {
+  replay?: boolean;
+};
 export function isWindowStat(value: DashboardMessage): value is WindowStat {
   return 'metric' in value && 'scope' in value && 'window_end' in value;
 }

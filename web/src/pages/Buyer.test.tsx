@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
@@ -24,8 +24,17 @@ vi.mock('../context/SessionContext', () => ({
   }),
 }));
 
+let buyerEvents: Array<{
+  event_id: string;
+  event_type: string;
+  actor_id: string;
+  actor_role: string;
+  timestamp: string;
+  payload: Record<string, unknown>;
+}> = [];
+
 vi.mock('../context/EventContext', () => ({
-  useEvents: () => ({ events: [], addEvent: vi.fn(), clearEvents: vi.fn() }),
+  useEvents: () => ({ events: buyerEvents, addEvent: vi.fn(), clearEvents: vi.fn() }),
 }));
 
 vi.mock('../hooks/useWebSocket', () => ({ useWebSocket: vi.fn() }));
@@ -71,6 +80,25 @@ function jsonResponse(data: unknown): Response {
   });
 }
 
+function errorResponse(message = ''): Response {
+  return new Response(message, {
+    status: 503,
+    statusText: 'Service Unavailable',
+    headers: { 'Content-Type': 'text/plain' },
+  });
+}
+
+function buyerEvent(eventId: string, eventType: string) {
+  return {
+    event_id: eventId,
+    event_type: eventType,
+    actor_id: 'buyer-uuid',
+    actor_role: 'buyer',
+    timestamp: '2026-08-15T07:00:00Z',
+    payload: { buyer_id: 'buyer-uuid', order_id: 'order-uuid' },
+  };
+}
+
 const addToCartMock = vi.mocked(addToCart);
 const checkoutMock = vi.mocked(checkout);
 const listBuyerOrdersMock = vi.mocked(listBuyerOrders);
@@ -104,6 +132,7 @@ function stylesheetRules(): CSSStyleRule[] {
 
 describe('Buyer', () => {
   beforeEach(() => {
+    buyerEvents = [];
     mockMatchMedia(false);
     addToCartMock.mockReset().mockImplementation(async () => jsonResponse({ cart_id: 'cart', items: [] }));
     checkoutMock.mockReset().mockImplementation(async () => jsonResponse({ id: 'order-uuid' }));
@@ -253,5 +282,93 @@ describe('Buyer', () => {
     expect(addToCartMock.mock.calls[1][1]).not.toBe(firstCartId);
     await user.click(screen.getByRole('button', { name: /Review cart.*1 item.*Rp 12.000/i }));
     expect(screen.getByRole('textbox', { name: 'Shipping address' })).toHaveValue('');
+  });
+
+  it.each([
+    ['a non-OK response body', async () => errorResponse('Cart inventory changed.'), 'Cart inventory changed.'],
+    ['an empty non-OK response', async () => errorResponse(), 'Could not add Flores coffee to the cart.'],
+    ['a transport rejection', async () => { throw new Error('network unavailable'); }, 'Could not add Flores coffee to the cart.'],
+  ])('does not mutate the cart or report success after %s', async (_caseName, responseFactory, expectedError) => {
+    addToCartMock.mockImplementationOnce(responseFactory);
+    const user = userEvent.setup();
+    renderBuyer();
+
+    await user.click(await screen.findByRole('button', { name: /Add Flores coffee to cart/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(expectedError);
+    expect(screen.getByRole('button', { name: /Review cart.*0 items.*Rp 0/i })).toBeDisabled();
+    expect(screen.queryByText('Flores coffee added to cart.')).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['a non-OK response body', async () => errorResponse('Checkout window closed.'), 'Checkout window closed.'],
+    ['an empty non-OK response', async () => errorResponse(), 'Could not place order.'],
+    ['a transport rejection', async () => { throw new Error('network unavailable'); }, 'Could not place order.'],
+  ])('keeps checkout state and reports %s', async (_caseName, responseFactory, expectedError) => {
+    checkoutMock.mockImplementationOnce(responseFactory);
+    const user = userEvent.setup();
+    renderBuyer();
+
+    await user.click(await screen.findByRole('button', { name: /Add Flores coffee to cart/i }));
+    await user.click(screen.getByRole('button', { name: /Review cart.*1 item/i }));
+    await user.type(screen.getByRole('textbox', { name: 'Shipping address' }), 'Jl. Merdeka 8');
+    await user.click(screen.getByRole('button', { name: 'Place order' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(expectedError);
+    expect(screen.getByRole('dialog', { name: 'Review your cart' })).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Shipping address' })).toHaveValue('Jl. Merdeka 8');
+    expect(screen.getByRole('button', { name: /Review cart.*1 item/i })).toBeInTheDocument();
+    expect(screen.queryByText('Order placed')).not.toBeInTheDocument();
+  });
+
+  it('retains products and orders while surfacing persistent refresh failures', async () => {
+    listBuyerProductsMock
+      .mockReset()
+      .mockImplementationOnce(async () => jsonResponse(products))
+      .mockImplementationOnce(async () => errorResponse('catalog unavailable'));
+    listBuyerOrdersMock
+      .mockReset()
+      .mockImplementationOnce(async () => jsonResponse(orders))
+      .mockImplementationOnce(async () => errorResponse('orders unavailable'));
+    const view = renderBuyer();
+
+    await screen.findByRole('heading', { name: 'Flores coffee' });
+    buyerEvents = [buyerEvent('product-refresh', 'product.listed')];
+    view.rerender(<MemoryRouter><Buyer /></MemoryRouter>);
+    await waitFor(() => expect(listBuyerProductsMock).toHaveBeenCalledTimes(2));
+
+    buyerEvents = [buyerEvent('order-refresh', 'order.confirmed')];
+    view.rerender(<MemoryRouter><Buyer /></MemoryRouter>);
+    await waitFor(() => expect(listBuyerOrdersMock).toHaveBeenCalledTimes(2));
+
+    const alerts = await screen.findAllByRole('alert');
+    expect(alerts.map((alert) => alert.textContent)).toEqual(expect.arrayContaining([
+      'Products could not be refreshed. Existing products are still shown.',
+      'Orders could not be refreshed. Existing orders are still shown.',
+    ]));
+    expect(screen.getByRole('heading', { name: 'Flores coffee' })).toBeVisible();
+    expect(screen.getByText('Confirmed')).toBeVisible();
+  });
+
+  it('expires success feedback but keeps an action error until a later action replaces it', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    try {
+      renderBuyer();
+      const addCoffee = await screen.findByRole('button', { name: /Add Flores coffee to cart/i });
+
+      await user.click(addCoffee);
+      expect(await screen.findByRole('status')).toHaveTextContent('Flores coffee added to cart.');
+      await act(async () => vi.advanceTimersByTime(4_001));
+      expect(screen.queryByText('Flores coffee added to cart.')).not.toBeInTheDocument();
+
+      addToCartMock.mockRejectedValueOnce(new Error('network unavailable'));
+      await user.click(addCoffee);
+      expect(await screen.findByRole('alert')).toHaveTextContent('Could not add Flores coffee to the cart.');
+      await act(async () => vi.advanceTimersByTime(4_001));
+      expect(screen.getByRole('alert')).toHaveTextContent('Could not add Flores coffee to the cart.');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { Button } from '../components/ui/Button';
 import { SignalTrace } from '../components/ui/SignalTrace';
+import { FOCUSABLE_SELECTOR, isolateModalBackground, nextFocusIndex } from '../lib/focusTrap';
 import { useDashboard } from './DashboardContext';
 import { DASHBOARD_STEPS, dashboardAdjacentPath } from './dashboardRoutes';
 
@@ -31,6 +32,8 @@ export function DashboardLayout() {
   const { pathname } = useLocation();
   const [now, setNow] = useState(() => new Date());
   const [confirmingClear, setConfirmingClear] = useState(false);
+  const clearTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const clearDialogRef = useRef<HTMLElement | null>(null);
   const currentStep = useMemo(
     () => DASHBOARD_STEPS.find((step) => step.path === pathname),
     [pathname],
@@ -43,9 +46,57 @@ export function DashboardLayout() {
     return () => window.clearInterval(timer);
   }, []);
 
+  useLayoutEffect(() => {
+    if (!confirmingClear) return undefined;
+    const dialog = clearDialogRef.current;
+    const returnFocusElement = clearTriggerRef.current;
+    if (!dialog) return undefined;
+
+    const restoreBackground = isolateModalBackground(dialog);
+    const focusFirstControl = () => {
+      dialog.querySelector<HTMLElement>(FOCUSABLE_SELECTOR)?.focus();
+    };
+    const keepFocusInside = (event: FocusEvent) => {
+      if (event.target instanceof Node && !dialog.contains(event.target)) {
+        focusFirstControl();
+      }
+    };
+    focusFirstControl();
+    document.addEventListener('focusin', keepFocusInside);
+
+    return () => {
+      document.removeEventListener('focusin', keepFocusInside);
+      restoreBackground();
+      returnFocusElement?.focus();
+    };
+  }, [confirmingClear]);
+
   const confirmClear = () => {
     clearAll();
     setConfirmingClear(false);
+  };
+
+  const handleClearDialogKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      setConfirmingClear(false);
+      return;
+    }
+    if (event.key !== 'Tab') return;
+
+    const focusable = Array.from(
+      clearDialogRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR) ?? [],
+    );
+    if (focusable.length === 0) {
+      event.preventDefault();
+      return;
+    }
+    const activeIndex = focusable.indexOf(document.activeElement as HTMLElement);
+    const isAtEdge = event.shiftKey ? activeIndex <= 0 : activeIndex === focusable.length - 1;
+    if (!isAtEdge) return;
+
+    event.preventDefault();
+    focusable[nextFocusIndex(activeIndex, focusable.length, event.shiftKey)]?.focus();
   };
 
   return (
@@ -64,7 +115,13 @@ export function DashboardLayout() {
           <time dateTime={now.toISOString()} className="dashboard-clock">
             {wibTime(now)} WIB
           </time>
-          <Button variant="secondary" onClick={() => setConfirmingClear(true)}>Clear dashboard</Button>
+          <Button
+            variant="secondary"
+            onClick={(event) => {
+              clearTriggerRef.current = event.currentTarget;
+              setConfirmingClear(true);
+            }}
+          >Clear dashboard</Button>
         </div>
       </header>
 
@@ -99,11 +156,18 @@ export function DashboardLayout() {
 
       {confirmingClear && (
         <div className="dashboard-clear-dialog__backdrop">
-          <section className="dashboard-clear-dialog" role="dialog" aria-modal="true" aria-labelledby="dashboard-clear-title">
+          <section
+            ref={clearDialogRef}
+            className="dashboard-clear-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="dashboard-clear-title"
+            onKeyDown={handleClearDialogKeyDown}
+          >
             <h2 id="dashboard-clear-title">Clear dashboard data?</h2>
             <p>This resets the live events, window metrics, and pattern signals across all three dashboard levels.</p>
             <div className="dashboard-clear-dialog__actions">
-              <Button autoFocus variant="secondary" onClick={() => setConfirmingClear(false)}>Cancel</Button>
+              <Button variant="secondary" onClick={() => setConfirmingClear(false)}>Cancel</Button>
               <Button variant="danger" onClick={confirmClear}>Clear dashboard</Button>
             </div>
           </section>

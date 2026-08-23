@@ -7,7 +7,7 @@ import {
   type KeyboardEvent,
   type RefObject,
 } from 'react';
-import { FOCUSABLE_SELECTOR, nextFocusIndex } from '../lib/focusTrap';
+import { FOCUSABLE_SELECTOR, isolateModalBackground, nextFocusIndex } from '../lib/focusTrap';
 import { Button } from './ui/Button';
 
 export interface CartItemView {
@@ -43,28 +43,6 @@ function desktopPanelMatches(): boolean {
 
 function alwaysRestoreFocus(): boolean {
   return true;
-}
-
-function isolateModalBackground(layer: HTMLElement): () => void {
-  const changedElements: HTMLElement[] = [];
-  let foreground: HTMLElement | null = layer;
-
-  while (foreground?.parentElement) {
-    const parent: HTMLElement = foreground.parentElement;
-    Array.from(parent.children).forEach((sibling) => {
-      if (sibling === foreground || !(sibling instanceof HTMLElement) || sibling.hasAttribute('inert')) return;
-      sibling.setAttribute('inert', '');
-      changedElements.push(sibling);
-    });
-    foreground = parent;
-    if (foreground === document.body) break;
-  }
-
-  return () => {
-    changedElements.forEach((element) => {
-      element.removeAttribute('inert');
-    });
-  };
 }
 
 export function CartSheet({

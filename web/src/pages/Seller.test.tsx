@@ -325,6 +325,61 @@ describe('Seller', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
+  it('ignores an older product success after a newer refresh publishes products', async () => {
+    const olderRefresh = deferredResponse();
+    const newestProducts = [{ ...products[0], id: 'newest-cocoa', name: 'Newest cocoa' }];
+    const olderProducts = [{ ...products[0], id: 'older-beans', name: 'Older beans' }];
+    listSellerProductsMock
+      .mockReset()
+      .mockImplementationOnce(async () => jsonResponse(products))
+      .mockReturnValueOnce(olderRefresh.promise)
+      .mockImplementationOnce(async () => jsonResponse(newestProducts));
+    const user = userEvent.setup();
+    renderSeller();
+
+    await screen.findByRole('heading', { name: 'Flores coffee' });
+    await user.type(screen.getByRole('textbox', { name: 'Product name' }), 'First listing');
+    await user.type(screen.getByRole('spinbutton', { name: 'Price in rupiah' }), '18000');
+    await user.click(screen.getByRole('button', { name: 'Add product' }));
+    await waitFor(() => expect(listSellerProductsMock).toHaveBeenCalledTimes(2));
+
+    await user.type(screen.getByRole('textbox', { name: 'Product name' }), 'Second listing');
+    await user.type(screen.getByRole('spinbutton', { name: 'Price in rupiah' }), '19000');
+    await user.click(screen.getByRole('button', { name: 'Add product' }));
+    expect(await screen.findByRole('heading', { name: 'Newest cocoa' })).toBeVisible();
+
+    await act(async () => olderRefresh.resolve(jsonResponse(olderProducts)));
+    expect(screen.getByRole('heading', { name: 'Newest cocoa' })).toBeVisible();
+    expect(screen.queryByRole('heading', { name: 'Older beans' })).not.toBeInTheDocument();
+  });
+
+  it('ignores an older product rejection after a newer refresh succeeds', async () => {
+    const olderRefresh = deferredResponse();
+    const newestProducts = [{ ...products[0], id: 'newest-cocoa', name: 'Newest cocoa' }];
+    listSellerProductsMock
+      .mockReset()
+      .mockImplementationOnce(async () => jsonResponse(products))
+      .mockReturnValueOnce(olderRefresh.promise)
+      .mockImplementationOnce(async () => jsonResponse(newestProducts));
+    const user = userEvent.setup();
+    renderSeller();
+
+    await screen.findByRole('heading', { name: 'Flores coffee' });
+    await user.type(screen.getByRole('textbox', { name: 'Product name' }), 'First listing');
+    await user.type(screen.getByRole('spinbutton', { name: 'Price in rupiah' }), '18000');
+    await user.click(screen.getByRole('button', { name: 'Add product' }));
+    await waitFor(() => expect(listSellerProductsMock).toHaveBeenCalledTimes(2));
+
+    await user.type(screen.getByRole('textbox', { name: 'Product name' }), 'Second listing');
+    await user.type(screen.getByRole('spinbutton', { name: 'Price in rupiah' }), '19000');
+    await user.click(screen.getByRole('button', { name: 'Add product' }));
+    expect(await screen.findByRole('heading', { name: 'Newest cocoa' })).toBeVisible();
+
+    await act(async () => olderRefresh.reject(new Error('late inventory failure')));
+    expect(screen.getByRole('heading', { name: 'Newest cocoa' })).toBeVisible();
+    expect(screen.queryByText('Products could not be refreshed. Existing products are still shown.')).not.toBeInTheDocument();
+  });
+
   it('uses phone-safe controls and switches to a desktop workbench at 960px', () => {
     renderSeller();
     const rules = stylesheetRules();

@@ -1,9 +1,10 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
 import { createSession } from '../api/client';
-import { isEventEnvelope, isWindowStat, useEvents, type DashboardMessage, type EventEnvelope, type MetricName, type WindowStat } from '../context/EventContext';
+import { isEventEnvelope, type DashboardMessage, type EventEnvelope, type MetricName, type WindowStat } from '../context/EventContext';
 import { useWebSocket } from '../hooks/useWebSocket';
-import { readCepAlertMessage, retainRecentAlerts, type CepAlert } from '../lib/cepAlerts';
+import { retainRecentAlerts, type CepAlert } from '../lib/cepAlerts';
 import { requestFreshDashboardToken } from '../lib/dashboardToken';
+import { appendUniqueEvent } from '../lib/eventFeed';
 import { jakartaRefreshSnapshot } from '../lib/jakartaDay';
 import { DASHBOARD_METRICS, dashboardReducer, initialDashboardData, type DashboardData } from './dashboardState';
 
@@ -20,22 +21,17 @@ export interface DashboardContextValue extends DashboardData {
 const DashboardContext = createContext<DashboardContextValue | undefined>(undefined);
 
 export function DashboardProvider({ children }: { children: ReactNode }) {
-  const { events, addEvent, clearEvents } = useEvents();
+  const [events, setEvents] = useState<EventEnvelope[]>([]);
   const [dashToken, setDashToken] = useState<string | null>(null);
   const tokenRequest = useRef<Promise<string> | null>(null);
-  const sessionResetAt = useRef(Date.now());
-  const sessionHasDomainEvent = useRef(false);
   const [data, dispatch] = useReducer(dashboardReducer, undefined, initialDashboardData);
   const onMessage = useCallback((message: DashboardMessage) => {
+    if (message.replay === true) return;
     if (isEventEnvelope(message)) {
-      sessionHasDomainEvent.current = true;
-      addEvent(message);
+      setEvents((current) => appendUniqueEvent(current, message));
     }
-    if (isWindowStat(message) && message.scope === 'daily' && !sessionHasDomainEvent.current) return;
-    const alert = readCepAlertMessage(message);
-    if (alert !== undefined && (alert === null || Date.parse(alert.detected_at) < sessionResetAt.current)) return;
     dispatch({ type: 'message', message });
-  }, [addEvent]);
+  }, []);
   const { connected } = useWebSocket<DashboardMessage>(onMessage, dashToken);
 
   useEffect(() => {
@@ -75,11 +71,9 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const clearAll = useCallback(() => {
-    sessionResetAt.current = Date.now();
-    sessionHasDomainEvent.current = false;
-    clearEvents();
+    setEvents([]);
     dispatch({ type: 'clear' });
-  }, [clearEvents]);
+  }, []);
   const groupedStats = useMemo(() => Object.fromEntries(
     DASHBOARD_METRICS.map((metric) => [metric, data.stats.filter((item) => item.metric === metric)]),
   ) as Record<MetricName, WindowStat[]>, [data.stats]);

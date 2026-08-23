@@ -88,6 +88,8 @@ export default function Buyer() {
   const [checkingOut, setCheckingOut] = useState(false);
   const [cartAddingId, setCartAddingId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<ActionFeedback | null>(null);
+  const [productRefreshError, setProductRefreshError] = useState<string | null>(null);
+  const [orderRefreshError, setOrderRefreshError] = useState<string | null>(null);
   const cartTriggerRef = useRef<HTMLButtonElement>(null);
   const recentOrdersRef = useRef<HTMLElement>(null);
   const focusOrdersAfterCheckoutRef = useRef(false);
@@ -98,14 +100,32 @@ export default function Buyer() {
 
   const loadProducts = useCallback(async () => {
     if (!token) return;
-    const response = await listBuyerProducts(token);
-    if (response.ok) setProducts(await response.json());
+    try {
+      const response = await listBuyerProducts(token);
+      if (!response.ok) {
+        setProductRefreshError('Products could not be refreshed. Existing products are still shown.');
+        return;
+      }
+      setProducts(await response.json());
+      setProductRefreshError(null);
+    } catch {
+      setProductRefreshError('Products could not be refreshed. Existing products are still shown.');
+    }
   }, [token]);
 
   const loadOrders = useCallback(async () => {
     if (!token) return;
-    const response = await listBuyerOrders(token);
-    if (response.ok) setOrders(await response.json());
+    try {
+      const response = await listBuyerOrders(token);
+      if (!response.ok) {
+        setOrderRefreshError('Orders could not be refreshed. Existing orders are still shown.');
+        return;
+      }
+      setOrders(await response.json());
+      setOrderRefreshError(null);
+    } catch {
+      setOrderRefreshError('Orders could not be refreshed. Existing orders are still shown.');
+    }
   }, [token]);
 
   useEffect(() => {
@@ -122,7 +142,7 @@ export default function Buyer() {
   }, [events, id, loadOrders]);
 
   useEffect(() => {
-    if (!feedback) return undefined;
+    if (!feedback || feedback.tone !== 'success') return undefined;
     const feedbackId = feedback.id;
     const timeout = window.setTimeout(() => {
       setFeedback((current) => expireFeedback(current, feedbackId));
@@ -146,6 +166,12 @@ export default function Buyer() {
     if (!token || cartAddingId) return;
     setCartAddingId(product.id);
     try {
+      const response = await addToCart(token, cartId, product.id, 1);
+      if (!response.ok) {
+        const message = (await response.text()).trim();
+        setFeedback(createFeedback('error', message || `Could not add ${product.name} to the cart.`));
+        return;
+      }
       setCart((current) => {
         const existing = current.find((item) => item.product.id === product.id);
         if (!existing) return [...current, { product, quantity: 1 }];
@@ -155,7 +181,6 @@ export default function Buyer() {
             : item
         ));
       });
-      await addToCart(token, cartId, product.id, 1);
       setFeedback(createFeedback('success', `${product.name} added to cart.`));
     } catch {
       setFeedback(createFeedback('error', `Could not add ${product.name} to the cart.`));
@@ -186,6 +211,8 @@ export default function Buyer() {
       setShowCheckout(false);
       setFeedback(createFeedback('success', 'Order placed'));
       await loadOrders();
+    } catch {
+      setFeedback(createFeedback('error', 'Could not place order.'));
     } finally {
       setCheckingOut(false);
     }
@@ -220,6 +247,12 @@ export default function Buyer() {
           <div className="buyer-content">
             {feedback ? (
               <FeedbackBanner tone={feedback.tone}>{feedback.message}</FeedbackBanner>
+            ) : null}
+            {productRefreshError ? (
+              <FeedbackBanner tone="error">{productRefreshError}</FeedbackBanner>
+            ) : null}
+            {orderRefreshError ? (
+              <FeedbackBanner tone="error">{orderRefreshError}</FeedbackBanner>
             ) : null}
 
             <section className="buyer-section buyer-catalog" aria-labelledby="buyer-catalog-heading">
