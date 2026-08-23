@@ -1,6 +1,6 @@
 import type { MetricName, WindowStat } from '../context/EventContext';
 import { jakartaDayForWindowEnd } from '../lib/jakartaDay';
-import { metricBuckets } from '../lib/metricBuckets';
+import { formatJakartaBucketRange, metricBuckets } from '../lib/metricBuckets';
 import { MetricBarChart } from '../components/MetricBarChart';
 
 export interface DashboardMetricDefinition {
@@ -29,13 +29,15 @@ function formatValue(value: number | undefined, rupiah = false): string {
 export function DashboardMetricCard({ metric, stats, sessionStart, jakartaDay, now }: DashboardMetricCardProps) {
   const windows = stats.filter((item) => item.scope === 'window');
   const buckets = metric.window ? metricBuckets(windows, sessionStart, now) : [];
-  const activeBucket = buckets[buckets.length - 1];
   const daily = metric.daily
     ? stats.find((item) => item.scope === 'daily' && jakartaDayForWindowEnd(item.window_end) === jakartaDay)
     : undefined;
-  const topProduct = metric.name === 'top_product' && typeof activeBucket?.detail.name === 'string'
-    ? activeBucket.detail.name
-    : null;
+  const topProductRows = metric.name === 'top_product'
+    ? buckets
+      .filter((bucket) => typeof bucket.detail.name === 'string' && bucket.detail.name.length > 0)
+      .slice(-5)
+      .reverse()
+    : [];
   const headingId = `metric-${metric.name}`;
 
   return (
@@ -49,12 +51,6 @@ export function DashboardMetricCard({ metric, stats, sessionStart, jakartaDay, n
       </header>
 
       <div className="dashboard-metric-card__values">
-        {metric.window && (
-          <div>
-            <span>Current 5 min</span>
-            <strong>{formatValue(activeBucket?.value, metric.rupiah)}</strong>
-          </div>
-        )}
         {metric.daily && (
           <div>
             <span>Today</span>
@@ -63,18 +59,30 @@ export function DashboardMetricCard({ metric, stats, sessionStart, jakartaDay, n
         )}
       </div>
 
-      {topProduct && <p className="dashboard-metric-card__detail">{topProduct}</p>}
-      {metric.window ? (
+      {metric.name === 'top_product' ? (
+        <div className="top-product-windows">
+          <table aria-label="Top product by five-minute window">
+            <thead><tr><th>Window</th><th>Top product</th><th>Adds</th></tr></thead>
+            <tbody>
+              {topProductRows.length === 0 ? (
+                <tr><td colSpan={3}>Waiting for product activity…</td></tr>
+              ) : topProductRows.map((bucket) => (
+                <tr key={bucket.windowEnd}>
+                  <td>{formatJakartaBucketRange(bucket.windowEnd) ?? bucket.windowEnd}</td>
+                  <td>{bucket.detail.name}</td>
+                  <td>{formatValue(bucket.value)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : metric.window ? (
         <MetricBarChart
           buckets={buckets}
           title={`${metric.label} five-minute aligned-window history`}
           formatValue={(value) => formatValue(value, metric.rupiah)}
         />
-      ) : (
-        <div className="dashboard-metric-card__daily" aria-hidden="true">
-          <span>Daily cumulative</span>
-        </div>
-      )}
+      ) : null}
     </article>
   );
 }

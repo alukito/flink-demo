@@ -80,6 +80,12 @@ test('renders the seven five-minute metric cards with the revenue total', () => 
   expect(screen.getByRole('heading', { name: 'Five-minute windows' })).toBeVisible();
   expect(screen.getAllByRole('article')).toHaveLength(7);
   expect(screen.getByRole('article', { name: 'Today’s revenue' })).toHaveTextContent('Rp');
+  expect(screen.queryByText('Current 5 min')).not.toBeInTheDocument();
+  expect(screen.queryByText('Daily cumulative')).not.toBeInTheDocument();
+
+  const topProducts = screen.getByRole('table', { name: 'Top product by five-minute window' });
+  expect(within(topProducts).getByText('Kopi Gayo')).toBeVisible();
+  expect(within(topProducts).getByText('4')).toBeVisible();
 });
 
 test('renders exactly the five CEP representations without exposing buyer data in trends', () => {
@@ -143,6 +149,20 @@ test('keeps the focused metric tooltip visible when the pointer leaves the same 
   expect(tooltip).toHaveTextContent('10:00–10:05 WIB: 8');
 });
 
+test('uses one readable time-range caption instead of crowded labels beneath each metric bar', () => {
+  render(<MetricBarChart
+    title="Listings five-minute aligned-window history"
+    formatValue={(value) => String(value)}
+    buckets={[
+      { start: '2026-08-15T03:00:00.000Z', windowEnd: '2026-08-15T03:05:00.000Z', value: 8, detail: {} },
+      { start: '2026-08-15T03:05:00.000Z', windowEnd: '2026-08-15T03:10:00.000Z', value: 3, detail: {} },
+    ]}
+  />);
+
+  expect(screen.getByText('10:00–10:10 WIB')).toBeVisible();
+  expect(document.querySelectorAll('.metric-bucket-x-label')).toHaveLength(0);
+});
+
 test('represents the empty duration message as an item in its labelled list', () => {
   render(<DeliveryDurationChart points={[]} />);
 
@@ -162,7 +182,7 @@ test('keeps expandable event payloads at the minimum interactive target height',
 });
 
 test('uses a twelve-pixel minimum for projector chart labels and metadata', () => {
-  expect(cssRule('.metric-bucket-y-tick text, .metric-bucket-x-label').style.fontSize).toBe('12px');
+  expect(cssRule('.metric-bucket-y-tick text').style.fontSize).toBe('12px');
   expect(cssRule('.metric-bucket-tooltip').style.fontSize).toBe('0.75rem');
   expect(cssRule('.dashboard-metric-card__header span, .dashboard-pattern-card > header span').style.fontSize).toBe('0.75rem');
   expect(cssRule('.delivery-duration-chart__item small').style.fontSize).toBe('0.75rem');

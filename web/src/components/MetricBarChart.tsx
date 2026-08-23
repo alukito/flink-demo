@@ -2,6 +2,7 @@ import { max, scaleBand, scaleLinear } from 'd3';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   formatJakartaBucketRange,
+  formatJakartaBucketEnd,
   formatJakartaBucketStart,
   METRIC_BUCKET_COUNT,
   type MetricBucket,
@@ -55,7 +56,9 @@ export function MetricBarChart({ buckets, title, formatValue }: MetricBarChartPr
   const tooltipText = activeBucket
     ? `${formatJakartaBucketRange(activeBucket.windowEnd) ?? activeBucket.windowEnd}: ${formatValue(activeBucket.value)}`
     : 'Focus or hover a bar to inspect its five-minute aligned window.';
-  const xLabelStep = Math.max(1, Math.ceil(buckets.length / 6));
+  const historyRange = buckets.length === 0
+    ? 'Waiting for the first five-minute window.'
+    : `${formatJakartaBucketStart(buckets[0].windowEnd)}–${formatJakartaBucketEnd(buckets[buckets.length - 1].windowEnd)} WIB`;
 
   return <div className="metric-bucket-chart" ref={containerRef}>
     <svg
@@ -114,16 +117,11 @@ export function MetricBarChart({ buckets, title, formatValue }: MetricBarChartPr
             >
               <title>{label}</title>
             </rect>
-            {(index % xLabelStep === 0 || index === buckets.length - 1) && <text
-              className="metric-bucket-x-label"
-              x={x + chart.x.bandwidth() / 2}
-              y={chart.innerHeight + 16}
-              textAnchor="middle"
-            >{formatJakartaBucketStart(bucket.windowEnd) ?? '—'}</text>}
           </g>;
         })}
       </g>
     </svg>
+    <span className="metric-bucket-time-range">{historyRange}</span>
     <output className="metric-bucket-tooltip" id={tooltipId} aria-live="polite">{tooltipText}</output>
   </div>;
 }

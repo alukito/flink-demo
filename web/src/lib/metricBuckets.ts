@@ -91,8 +91,13 @@ export function formatJakartaBucketStart(windowEnd: string): string | null {
   return end === null ? null : JAKARTA_TIME_FORMATTER.format(new Date(end - FIVE_MINUTES_MS));
 }
 
+export function formatJakartaBucketEnd(windowEnd: string): string | null {
+  const end = timestamp(windowEnd);
+  return end === null ? null : JAKARTA_TIME_FORMATTER.format(new Date(end));
+}
+
 export function formatJakartaBucketRange(windowEnd: string): string | null {
   const start = formatJakartaBucketStart(windowEnd);
-  const end = timestamp(windowEnd);
-  return start === null || end === null ? null : `${start}–${JAKARTA_TIME_FORMATTER.format(new Date(end))} WIB`;
+  const end = formatJakartaBucketEnd(windowEnd);
+  return start === null || end === null ? null : `${start}–${end} WIB`;
 }

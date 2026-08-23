@@ -714,39 +714,24 @@ button:disabled {
 .dashboard-metric-card__values span { display: block; color: var(--color-steel); font-size: 0.75rem; }
 .dashboard-metric-card__values strong { display: block; overflow: hidden; color: var(--color-deep-ink); font-family: var(--font-data); font-size: clamp(1.1rem, 1.35vw, 1.5rem); text-overflow: ellipsis; white-space: nowrap; }
 .dashboard-metric-card--revenue .dashboard-metric-card__values strong { font-size: clamp(1.65rem, 2.4vw, 2.75rem); }
-.dashboard-metric-card__detail { min-height: 1.15rem; margin: -0.15rem 0 0.15rem; overflow: hidden; color: var(--color-steel); font-size: 0.75rem; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
-
-.dashboard-metric-card__daily {
-  position: relative;
-  display: grid;
-  flex: 1;
-  min-height: 6rem;
-  place-items: end start;
-  overflow: hidden;
-  border-top: 1px solid color-mix(in srgb, var(--color-steel), transparent 70%);
-  color: var(--color-steel);
-  font-family: var(--font-data);
-  font-size: 0.75rem;
-}
-
-.dashboard-metric-card__daily::before {
-  position: absolute;
-  inset: 45% 0 auto;
-  height: 2px;
-  background: var(--color-deep-ink);
-  content: '';
-}
-
 .metric-bucket-chart { min-width: 0; margin-top: auto; }
 .metric-bucket-chart-svg { display: block; width: 100%; max-height: 8rem; }
 .metric-bucket-axis { stroke: color-mix(in srgb, var(--color-steel), transparent 35%); }
 .metric-bucket-y-tick line { stroke: color-mix(in srgb, var(--color-steel), transparent 82%); }
-.metric-bucket-y-tick text, .metric-bucket-x-label { fill: var(--color-steel); font-family: var(--font-data); font-size: 12px; }
+.metric-bucket-y-tick text { fill: var(--color-steel); font-family: var(--font-data); font-size: 12px; }
 .metric-bucket-empty-slot { fill: color-mix(in srgb, var(--color-canvas), transparent 18%); }
 .metric-bucket-bar { fill: var(--color-deep-ink); }
 .metric-bucket-hit-target { fill: transparent; cursor: crosshair; }
 .metric-bucket-hit-target:focus-visible { outline: none; stroke: var(--color-brass); stroke-width: 3; }
+.metric-bucket-time-range { display: block; margin-top: 0.25rem; color: var(--color-steel); font-family: var(--font-data); font-size: 0.75rem; white-space: nowrap; }
 .metric-bucket-tooltip { display: block; min-height: 1.1rem; overflow: hidden; color: var(--color-steel); font-family: var(--font-data); font-size: 0.75rem; text-overflow: ellipsis; white-space: nowrap; }
+
+.top-product-windows { flex: 1; min-height: 0; margin-top: 0.75rem; overflow: hidden; }
+.top-product-windows table { width: 100%; border-collapse: collapse; }
+.top-product-windows th, .top-product-windows td { padding: 0.55rem 0.3rem; border-bottom: 1px solid color-mix(in srgb, var(--color-steel), transparent 75%); text-align: left; }
+.top-product-windows th { color: var(--color-steel); font-family: var(--font-data); font-size: 0.6875rem; letter-spacing: 0.04em; text-transform: uppercase; }
+.top-product-windows th:last-child, .top-product-windows td:last-child { width: 3rem; font-family: var(--font-data); text-align: right; }
+.top-product-windows td:first-child { color: var(--color-steel); font-family: var(--font-data); font-size: 0.75rem; }
 
 .dashboard-pattern-grid {
   display: grid;
