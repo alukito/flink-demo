@@ -227,13 +227,18 @@ export default function Buyer() {
       setShippingAddress('');
       focusOrdersAfterCheckoutRef.current = true;
       setShowCheckout(false);
+      await Promise.all([loadOrders(), loadProducts()]);
       setFeedback({ ...createFeedback('success', 'Order placed'), surface: 'page' });
-      await loadOrders();
     } catch {
       setFeedback({ ...createFeedback('error', 'Could not place order.'), surface: 'checkout' });
     } finally {
       setCheckingOut(false);
     }
+  };
+
+  const handleRemoveCartItem = (productId: string) => {
+    setCart((current) => current.filter((item) => item.product.id !== productId));
+    setFeedback(null);
   };
 
   const handleLogout = () => {
@@ -374,6 +379,7 @@ export default function Buyer() {
             returnFocusRef={cartTriggerRef}
             shouldRestoreFocus={shouldRestoreCartFocus}
             onAddressChange={setShippingAddress}
+            onRemoveItem={handleRemoveCartItem}
             onClose={() => setShowCheckout(false)}
             onPlaceOrder={handleCheckout}
           />

@@ -1536,6 +1536,17 @@ button:disabled {
   border-bottom: 1px solid color-mix(in srgb, var(--color-steel), transparent 78%);
 }
 
+.cart-sheet__item-details {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.cart-sheet__item-details .button {
+  justify-self: start;
+  min-height: auto;
+  padding: 0.2rem 0;
+}
+
 .cart-sheet__items strong,
 .cart-sheet__total strong {
   flex: 0 0 auto;

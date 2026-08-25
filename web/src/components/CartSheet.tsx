@@ -30,6 +30,7 @@ export interface CartSheetProps {
   returnFocusRef: RefObject<HTMLButtonElement | null>;
   shouldRestoreFocus?: () => boolean;
   onAddressChange: (value: string) => void;
+  onRemoveItem?: (productId: string) => void;
   onClose: () => void;
   onPlaceOrder: () => void;
 }
@@ -57,6 +58,7 @@ export function CartSheet({
   returnFocusRef,
   shouldRestoreFocus = alwaysRestoreFocus,
   onAddressChange,
+  onRemoveItem,
   onClose,
   onPlaceOrder,
 }: CartSheetProps) {
@@ -162,7 +164,19 @@ export function CartSheet({
           <ul className="cart-sheet__items" aria-label="Cart items">
             {items.map((item) => (
               <li key={item.product.id}>
-                <span>{item.quantity} × {item.product.name}</span>
+                <span className="cart-sheet__item-details">
+                  <span>{item.quantity} × {item.product.name}</span>
+                  {onRemoveItem ? (
+                    <button
+                      type="button"
+                      className="button button--ghost"
+                      aria-label={`Remove ${item.product.name} from cart`}
+                      onClick={() => onRemoveItem(item.product.id)}
+                    >
+                      Remove
+                    </button>
+                  ) : null}
+                </span>
                 <strong>{formatPrice(item.product.price * item.quantity)}</strong>
               </li>
             ))}

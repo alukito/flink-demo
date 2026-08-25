@@ -274,8 +274,24 @@ describe('Buyer', () => {
     expect(screen.getByRole('button', { name: /Review cart.*2 items.*Rp 24.000/i })).toHaveClass('buyer-cart-summary');
   });
 
+  it('removes an unavailable item from the cart during checkout', async () => {
+    const user = userEvent.setup();
+    renderBuyer();
+
+    await user.click(await screen.findByRole('button', { name: /Add Flores coffee to cart/i }));
+    await user.click(screen.getByRole('button', { name: /Review cart.*1 item/i }));
+    await user.click(screen.getByRole('button', { name: /Remove Flores coffee from cart/i }));
+
+    expect(screen.getByRole('button', { name: /Review cart.*0 items.*Rp 0/i })).toBeDisabled();
+    expect(screen.queryByText('1 × Flores coffee')).not.toBeInTheDocument();
+  });
+
   it('places the quantity-aware payload, resets checkout state, focuses recent orders, and reloads them', async () => {
     const user = userEvent.setup();
+    listBuyerProductsMock
+      .mockReset()
+      .mockImplementationOnce(async () => jsonResponse(products))
+      .mockImplementationOnce(async () => jsonResponse([{ ...products[0], quantity: 0 }, products[1]]));
     renderBuyer();
     const addCoffee = await screen.findByRole('button', { name: /Add Flores coffee to cart/i });
 
@@ -299,6 +315,8 @@ describe('Buyer', () => {
     expect(screen.getByRole('heading', { name: 'Recent orders' }).closest('section')).toHaveFocus();
     expect(emptyCartReview).not.toHaveFocus();
     await waitFor(() => expect(listBuyerOrdersMock).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(listBuyerProductsMock).toHaveBeenCalledTimes(2));
+    expect(screen.getByText('0 in stock')).toBeVisible();
 
     await user.click(addCoffee);
     await waitFor(() => expect(addToCartMock).toHaveBeenCalledTimes(2));
