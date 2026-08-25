@@ -113,7 +113,7 @@ test('returns deterministic non-negative checkout-to-delivery elapsed seconds', 
   ]);
 
   assert.deepEqual(durations, [
-    { alertId: 'delivery-a', orderId: 'a', detectedAt: '2026-08-02T09:00:00.000Z', elapsedSeconds: 11 },
-    { alertId: 'delivery-b', orderId: 'b', detectedAt: '2026-08-02T10:00:00.000Z', elapsedSeconds: 47 },
+    { alertId: 'delivery-a', orderId: 'a', detectedAt: '2026-08-02T09:00:00.000Z', elapsedSeconds: 11, shipperId: '—', shipperName: '—' },
+    { alertId: 'delivery-b', orderId: 'b', detectedAt: '2026-08-02T10:00:00.000Z', elapsedSeconds: 47, shipperId: '—', shipperName: '—' },
   ]);
 });

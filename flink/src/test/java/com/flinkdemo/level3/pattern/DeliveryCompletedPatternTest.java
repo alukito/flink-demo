@@ -29,6 +29,8 @@ class DeliveryCompletedPatternTest {
         assertEquals("2026-08-01T10:00:00Z", alert.getDetail().get("checkout_at"));
         assertEquals("2026-08-01T10:00:47Z", alert.getDetail().get("delivered_at"));
         assertEquals(47L, alert.getDetail().get("elapsed_seconds"));
+        assertEquals("shipper-1", alert.getDetail().get("shipper_id"));
+        assertEquals("Shipper", alert.getDetail().get("shipper_name"));
     }
 
     @Test
@@ -111,13 +113,14 @@ class DeliveryCompletedPatternTest {
     }
 
     private EventEnvelope event(String eventId, String eventType, String orderId, String timestamp) throws Exception {
+        boolean delivery = "shipment.delivered".equals(eventType);
         return new EventEnvelope(
             eventId,
             eventType,
-            "seller-1",
-            "Seller",
-            "seller",
+            delivery ? "shipper-1" : "buyer-1",
+            delivery ? "Shipper" : "Buyer",
+            delivery ? "shipper" : "buyer",
             timestamp,
-            mapper.readTree("{\"order_id\":\"" + orderId + "\"}"));
+            mapper.readTree("{\"order_id\":\"" + orderId + "\",\"shipper_id\":\"shipper-1\",\"shipper_name\":\"Shipper\"}"));
     }
 }

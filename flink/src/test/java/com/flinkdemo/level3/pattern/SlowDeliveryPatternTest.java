@@ -25,6 +25,12 @@ class SlowDeliveryPatternTest {
         assertEquals("slow_delivery:order-1", alert.getAlertId());
         assertEquals("slow_delivery", alert.getPattern());
         assertEquals("order-1", alert.getDetail().get("order_id"));
+        assertEquals("buyer-1", alert.getDetail().get("buyer_id"));
+        assertEquals("Buyer", alert.getDetail().get("buyer_name"));
+        assertEquals("seller-1", alert.getDetail().get("seller_id"));
+        assertEquals("Seller", alert.getDetail().get("seller_name"));
+        assertEquals("shipper-1", alert.getDetail().get("shipper_id"));
+        assertEquals("Shipper", alert.getDetail().get("shipper_name"));
         assertEquals("2026-08-01T10:01:00Z", alert.getDetectedAt());
     }
 
@@ -87,10 +93,10 @@ class SlowDeliveryPatternTest {
         return new EventEnvelope(
             eventId,
             eventType,
-            "seller-1",
-            "Seller",
-            "seller",
+            "shipper-1",
+            "Shipper",
+            "shipper",
             timestamp,
-            mapper.readTree("{\"order_id\":\"" + orderId + "\"}"));
+            mapper.readTree("{\"order_id\":\"" + orderId + "\",\"buyer_id\":\"buyer-1\",\"buyer_name\":\"Buyer\",\"seller_id\":\"seller-1\",\"seller_name\":\"Seller\",\"shipper_id\":\"shipper-1\",\"shipper_name\":\"Shipper\"}"));
     }
 }

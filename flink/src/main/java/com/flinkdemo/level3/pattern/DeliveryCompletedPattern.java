@@ -7,6 +7,7 @@ import com.flinkdemo.level3.EventDeduplicator;
 import com.flinkdemo.level3.model.CepAlert;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.apache.flink.cep.CEP;
@@ -87,15 +88,22 @@ public final class DeliveryCompletedPattern {
         Instant deliveredAt = Instant.ofEpochMilli(CepJobSupport.eventTimestamp(delivery));
         long elapsedSeconds = Duration.between(checkoutAt, deliveredAt).getSeconds();
         String orderId = orderId(checkout);
+        Map<String, Object> detail = new LinkedHashMap<>();
+        detail.put("order_id", orderId);
+        detail.put("checkout_at", checkoutAt.toString());
+        detail.put("delivered_at", deliveredAt.toString());
+        detail.put("elapsed_seconds", elapsedSeconds);
+        for (String field : List.of("shipper_id", "shipper_name")) {
+            if (delivery.getPayload() != null) {
+                String value = delivery.getPayload().path(field).asText("");
+                if (!value.isBlank()) detail.put(field, value);
+            }
+        }
         return new CepAlert(
             ALERT_PATTERN + ":" + orderId,
             ALERT_PATTERN,
             deliveredAt.toString(),
-            Map.of(
-                "order_id", orderId,
-                "checkout_at", checkoutAt.toString(),
-                "delivered_at", deliveredAt.toString(),
-                "elapsed_seconds", elapsedSeconds));
+            detail);
     }
 
     private static EventEnvelope event(Map<String, List<EventEnvelope>> match, String name) {

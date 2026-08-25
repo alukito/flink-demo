@@ -6,6 +6,7 @@ import com.flinkdemo.level3.CepJobSupport;
 import com.flinkdemo.level3.EventDeduplicator;
 import com.flinkdemo.level3.model.CepAlert;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.apache.flink.cep.CEP;
@@ -88,12 +89,29 @@ public final class AbandonedCartPattern {
     }
 
     private static CepAlert alert(Map<String, List<EventEnvelope>> match, long detectedAtMillis) {
-        String cartId = cartId(addedEvent(match));
+        EventEnvelope added = addedEvent(match);
+        String cartId = cartId(added);
+        Map<String, Object> detail = new LinkedHashMap<>();
+        detail.put("cart_id", cartId);
+        putIfPresent(detail, "buyer_id", added.getActorId());
+        putIfPresent(detail, "buyer_name", added.getActorName());
+        putPayloadText(detail, added, "seller_id");
+        putPayloadText(detail, added, "seller_name");
         return new CepAlert(
             ALERT_PATTERN + ":" + cartId,
             ALERT_PATTERN,
             Instant.ofEpochMilli(detectedAtMillis).toString(),
-            Map.of("cart_id", cartId));
+            detail);
+    }
+
+    private static void putPayloadText(Map<String, Object> detail, EventEnvelope event, String field) {
+        if (event.getPayload() != null) {
+            putIfPresent(detail, field, event.getPayload().path(field).asText(""));
+        }
+    }
+
+    private static void putIfPresent(Map<String, Object> detail, String field, String value) {
+        if (value != null && !value.isBlank()) detail.put(field, value);
     }
 
     private static EventEnvelope addedEvent(Map<String, List<EventEnvelope>> match) {
