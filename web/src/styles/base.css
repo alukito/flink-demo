@@ -750,22 +750,6 @@ button:disabled {
 .dashboard-pattern-card--duration { grid-column: span 3; }
 .dashboard-pattern-card > p { margin: 0.35rem 0 1rem; color: var(--color-steel); font-size: 0.8125rem; }
 
-.alert-count-chart {
-  display: flex;
-  flex: 1;
-  align-items: flex-end;
-  gap: 2px;
-  min-height: 7rem;
-  padding-top: 1rem;
-  border-bottom: 1px solid color-mix(in srgb, var(--color-steel), transparent 45%);
-}
-
-.alert-count-chart__bar {
-  flex: 1 1 0;
-  min-width: 1px;
-  background: var(--color-deep-ink);
-}
-
 .trending-products { min-height: 0; margin-top: 0.75rem; overflow: hidden; }
 .trending-products table { width: 100%; border-collapse: collapse; }
 .trending-products th, .trending-products td { padding: 0.65rem 0.35rem; border-bottom: 1px solid color-mix(in srgb, var(--color-steel), transparent 75%); text-align: left; }
@@ -785,31 +769,12 @@ button:disabled {
 .order-surge strong { color: var(--color-deep-ink); font-family: var(--font-display); font-size: clamp(1.4rem, 2vw, 2rem); }
 .order-surge small { margin-top: 0.35rem; color: var(--color-steel); font-family: var(--font-data); }
 
-.delivery-duration-chart {
-  display: flex;
-  flex: 1;
-  align-items: end;
-  gap: 1px;
-  min-height: 8rem;
-  overflow-x: hidden;
-  border-bottom: 1px solid color-mix(in srgb, var(--color-steel), transparent 45%);
-}
-
-.delivery-duration-chart__item {
-  display: grid;
-  flex: 1 1 0;
-  grid-template-rows: minmax(2rem, 1fr) auto auto;
-  align-items: end;
-  height: 100%;
-  min-width: 0;
-  max-width: 8rem;
-  text-align: center;
-}
-
-.delivery-duration-chart__bar { justify-self: center; width: min(70%, 2.5rem); background: var(--color-deep-ink); }
-.delivery-duration-chart__item strong { margin-top: 0.35rem; color: var(--color-deep-ink); font-family: var(--font-data); font-size: 0.75rem; }
-.delivery-duration-chart__item small { overflow: hidden; color: var(--color-steel); font-family: var(--font-data); font-size: 0.75rem; text-overflow: ellipsis; white-space: nowrap; }
-.dashboard-empty-chart { align-self: center; color: var(--color-steel); }
+.pattern-event-table { min-height: 0; margin-top: 0.75rem; overflow: hidden; }
+.pattern-event-table table { width: 100%; table-layout: fixed; border-collapse: collapse; }
+.pattern-event-table th, .pattern-event-table td { padding: 0.65rem 0.35rem; overflow: hidden; border-bottom: 1px solid color-mix(in srgb, var(--color-steel), transparent 75%); text-align: left; text-overflow: ellipsis; white-space: nowrap; }
+.pattern-event-table th { color: var(--color-steel); font-family: var(--font-data); font-size: 0.75rem; letter-spacing: 0.04em; text-transform: uppercase; }
+.pattern-event-table td { color: var(--color-deep-ink); font-size: 0.8125rem; }
+.pattern-event-table td:first-child, .pattern-event-table td:last-child { color: var(--color-steel); font-family: var(--font-data); font-size: 0.75rem; }
 
 .seller-view {
   display: grid;

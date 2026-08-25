@@ -25,6 +25,10 @@ class AbandonedCartPatternTest {
         assertEquals("abandoned_cart:cart-1", alert.getAlertId());
         assertEquals("abandoned_cart", alert.getPattern());
         assertEquals("cart-1", alert.getDetail().get("cart_id"));
+        assertEquals("buyer-1", alert.getDetail().get("buyer_id"));
+        assertEquals("Buyer", alert.getDetail().get("buyer_name"));
+        assertEquals("seller-1", alert.getDetail().get("seller_id"));
+        assertEquals("Seller", alert.getDetail().get("seller_name"));
         assertEquals("2026-08-01T10:02:00Z", alert.getDetectedAt());
     }
 
@@ -80,6 +84,6 @@ class AbandonedCartPatternTest {
             "Buyer",
             "buyer",
             timestamp,
-            mapper.readTree("{\"cart_id\":\"" + cartId + "\"}"));
+            mapper.readTree("{\"cart_id\":\"" + cartId + "\",\"seller_id\":\"seller-1\",\"seller_name\":\"Seller\"}"));
     }
 }

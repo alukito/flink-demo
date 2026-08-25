@@ -6,6 +6,7 @@ import com.flinkdemo.level3.CepJobSupport;
 import com.flinkdemo.level3.EventDeduplicator;
 import com.flinkdemo.level3.model.CepAlert;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.apache.flink.cep.CEP;
@@ -88,12 +89,21 @@ public final class SlowDeliveryPattern {
     }
 
     private static CepAlert alert(Map<String, List<EventEnvelope>> match, long detectedAtMillis) {
-        String orderId = orderId(pickedEvent(match));
+        EventEnvelope picked = pickedEvent(match);
+        String orderId = orderId(picked);
+        Map<String, Object> detail = new LinkedHashMap<>();
+        detail.put("order_id", orderId);
+        for (String field : List.of("buyer_id", "buyer_name", "seller_id", "seller_name", "shipper_id", "shipper_name")) {
+            if (picked.getPayload() != null) {
+                String value = picked.getPayload().path(field).asText("");
+                if (!value.isBlank()) detail.put(field, value);
+            }
+        }
         return new CepAlert(
             ALERT_PATTERN + ":" + orderId,
             ALERT_PATTERN,
             Instant.ofEpochMilli(detectedAtMillis).toString(),
-            Map.of("order_id", orderId));
+            detail);
     }
 
     private static EventEnvelope pickedEvent(Map<String, List<EventEnvelope>> match) {

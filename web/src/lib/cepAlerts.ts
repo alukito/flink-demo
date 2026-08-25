@@ -27,6 +27,8 @@ export interface DeliveryDuration {
   orderId: string;
   detectedAt: string;
   elapsedSeconds: number;
+  shipperId: string;
+  shipperName: string;
 }
 
 const EIGHT_HOURS_MS = 8 * 60 * 60 * 1000;
@@ -158,6 +160,10 @@ export function deliveryDurations(alerts: readonly CepAlert[]): DeliveryDuration
       orderId: typeof alert.detail.order_id === 'string' ? alert.detail.order_id : alert.alert_id,
       detectedAt: alert.detected_at,
       elapsedSeconds,
+      shipperId: typeof alert.detail.shipper_id === 'string' ? alert.detail.shipper_id : '—',
+      shipperName: typeof alert.detail.shipper_name === 'string'
+        ? alert.detail.shipper_name
+        : typeof alert.detail.shipper_id === 'string' ? alert.detail.shipper_id : '—',
     }];
   }).sort((left, right) => left.detectedAt.localeCompare(right.detectedAt) || left.alertId.localeCompare(right.alertId));
 }

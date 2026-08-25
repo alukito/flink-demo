@@ -1,7 +1,5 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
-import { AlertCountChart } from '../../dashboard/AlertCountChart';
-import { DeliveryDurationChart } from '../../dashboard/DeliveryDurationChart';
 import { MetricBarChart } from '../../components/MetricBarChart';
 import { useDashboard } from '../../dashboard/DashboardContext';
 import { DashboardLivePage } from './DashboardLivePage';
@@ -56,11 +54,11 @@ beforeEach(() => {
     jakartaDay: '2026-08-15',
     now,
     recentAlerts: [
-      { alert_id: 'alert-1', pattern: 'abandoned_cart', detected_at: '2026-08-15T02:20:00.000Z', detail: {} },
-      { alert_id: 'alert-2', pattern: 'slow_delivery', detected_at: '2026-08-15T02:30:00.000Z', detail: {} },
+      { alert_id: 'alert-1', pattern: 'abandoned_cart', detected_at: '2026-08-15T02:20:00.000Z', detail: { cart_id: 'cart-1', buyer_id: 'buyer-7', buyer_name: 'Rani', seller_id: 'seller-3', seller_name: 'Bima' } },
+      { alert_id: 'alert-2', pattern: 'slow_delivery', detected_at: '2026-08-15T02:30:00.000Z', detail: { order_id: 'order-slow', buyer_name: 'Rani', seller_name: 'Bima', shipper_id: 'shipper-4', shipper_name: 'Dewi' } },
       { alert_id: 'alert-3', pattern: 'trending_product', detected_at: '2026-08-15T02:40:00.000Z', detail: { product_id: 'product-1', product_name: 'Kopi Gayo', buyer_id: 'buyer-7' } },
       { alert_id: 'alert-4', pattern: 'order_surge', detected_at: '2026-08-15T02:50:00.000Z', detail: {} },
-      { alert_id: 'alert-5', pattern: 'delivery_completed', detected_at: '2026-08-15T03:00:00.000Z', detail: { order_id: 'order-1', elapsed_seconds: 780 } },
+      { alert_id: 'alert-5', pattern: 'delivery_completed', detected_at: '2026-08-15T03:00:00.000Z', detail: { order_id: 'order-1', shipper_id: 'shipper-4', shipper_name: 'Dewi', elapsed_seconds: 780 } },
     ],
     sessionStart: '2026-08-15T03:05:00.000Z',
     stats: [],
@@ -101,32 +99,32 @@ test('renders exactly the five CEP representations without exposing buyer data i
   expect(trending).not.toHaveTextContent('buyer-7');
 });
 
-test('exposes exact alert bucket counts and gives a zero-count bucket zero height', () => {
-  render(<AlertCountChart
-    label="Abandoned carts"
-    points={[
-      { start: '2026-08-15T02:20:00.000Z', count: 0 },
-      { start: '2026-08-15T02:30:00.000Z', count: 2 },
-    ]}
-  />);
+test('renders special-event histories as participant tables without chart bars', () => {
+  render(<DashboardPatternsPage />);
 
-  const buckets = within(screen.getByRole('list', { name: 'Abandoned carts ten-minute count history' })).getAllByRole('listitem');
-  expect(buckets[0]).toHaveAccessibleName(/0 alerts/);
-  expect(buckets[0]).toHaveStyle({ height: '0%' });
-  expect(buckets[1]).toHaveAccessibleName(/2 alerts/);
+  const abandoned = screen.getByRole('table', { name: 'Abandoned carts' });
+  expect(abandoned).toHaveTextContent('Rani');
+  expect(abandoned).toHaveTextContent('Bima');
+  expect(abandoned).toHaveTextContent('cart-1');
+
+  const slow = screen.getByRole('table', { name: 'Slow delivery' });
+  expect(slow).toHaveTextContent('Rani');
+  expect(slow).toHaveTextContent('Bima');
+  expect(slow).toHaveTextContent('Dewi');
+  expect(slow).toHaveTextContent('order-slow');
+
+  expect(document.querySelector('.alert-count-chart__bar')).not.toBeInTheDocument();
+  expect(document.querySelector('.delivery-duration-chart__bar')).not.toBeInTheDocument();
 });
 
-test('exposes each completed order and elapsed seconds in the duration history', () => {
-  render(<DeliveryDurationChart points={[{
-    alertId: 'alert-5',
-    orderId: 'order-1',
-    detectedAt: '2026-08-15T03:00:00.000Z',
-    elapsedSeconds: 780,
-  }]} />);
+test('renders checkout-to-delivery as a shipper and elapsed-time table', () => {
+  render(<DashboardPatternsPage />);
 
-  const history = screen.getByRole('list', { name: 'Checkout to delivery elapsed seconds per completed order' });
-  expect(within(history).getByRole('listitem')).toHaveTextContent('780s');
-  expect(within(history).getByRole('listitem')).toHaveTextContent('order-1');
+  const deliveries = screen.getByRole('table', { name: 'Checkout to delivery' });
+  expect(within(deliveries).getByRole('columnheader', { name: 'Shipper' })).toBeVisible();
+  expect(within(deliveries).getByRole('columnheader', { name: 'Elapsed' })).toBeVisible();
+  expect(deliveries).toHaveTextContent('Dewi');
+  expect(deliveries).toHaveTextContent('13m 00s');
 });
 
 test('keeps the focused metric tooltip visible when the pointer leaves the same bar', () => {
@@ -163,16 +161,9 @@ test('uses one readable time-range caption instead of crowded labels beneath eac
   expect(document.querySelectorAll('.metric-bucket-x-label')).toHaveLength(0);
 });
 
-test('represents the empty duration message as an item in its labelled list', () => {
-  render(<DeliveryDurationChart points={[]} />);
-
-  expect(within(screen.getByRole('list', { name: 'Checkout to delivery elapsed seconds per completed order' }))
-    .getByRole('listitem')).toHaveTextContent('Waiting for a completed delivery');
-});
-
-test('keeps Level 3 histories out of internal scroll containers', () => {
+test('keeps Level 3 tables out of internal scroll containers', () => {
   expect(cssRule('.trending-products').style.overflow).toBe('hidden');
-  expect(cssRule('.delivery-duration-chart').style.overflowX).toBe('hidden');
+  expect(cssRule('.pattern-event-table').style.overflow).toBe('hidden');
 });
 
 test('keeps expandable event payloads at the minimum interactive target height', () => {
@@ -185,7 +176,7 @@ test('uses a twelve-pixel minimum for projector chart labels and metadata', () =
   expect(cssRule('.metric-bucket-y-tick text').style.fontSize).toBe('12px');
   expect(cssRule('.metric-bucket-tooltip').style.fontSize).toBe('0.75rem');
   expect(cssRule('.dashboard-metric-card__header span, .dashboard-pattern-card > header span').style.fontSize).toBe('0.75rem');
-  expect(cssRule('.delivery-duration-chart__item small').style.fontSize).toBe('0.75rem');
+  expect(cssRule('.pattern-event-table th').style.fontSize).toBe('0.75rem');
 });
 
 test('uses the supplied raised-shadow token for dashboard cards', () => {
